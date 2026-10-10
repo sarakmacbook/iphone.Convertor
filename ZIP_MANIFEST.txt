@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+set -euo pipefail
+echo "Sendable deploy ZIP bundle"
+echo "Files included:"
+ls -la dist/index.html vercel.json build_deploy.sh DEPLOY.md index.html package.json src/ 2>/dev/null || echo "(see build output)"
