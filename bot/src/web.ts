@@ -22,7 +22,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { applyCors, sendError, sendJson } from "./cors.js";
 import { CancelledError, probeVideo, resizeVideo } from "./ffmpeg.js";
-import { MalformedMultipartError, PayloadTooLargeError, parseBoundary, readMultipart, type FileSink } from "./multipart.js";
+import { MalformedMultipartError, PayloadTooLargeError, parseBoundary, readMultipart } from "./multipart.js";
 import { outputFileName } from "./paths.js";
 import { Semaphore } from "./semaphore.js";
 import {

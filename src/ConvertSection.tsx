@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, ty
 import {
   ConvertError,
   cancelJob,
+  convertWithBlob,
   downloadUrl,
   fetchServerConfig,
   fileProblem,
@@ -80,6 +81,8 @@ function MediaCard({
 export default function ConvertSection({ apiUrl }: Props) {
   const [config, setConfig] = useState<ServerConfig | null>(null);
   const [configError, setConfigError] = useState("");
+  /** True when a server answered but isn't ready (e.g. no Vercel Blob store yet). */
+  const [configReachable, setConfigReachable] = useState(false);
   const [checking, setChecking] = useState(true);
 
   const [file, setFile] = useState<File | null>(null);
@@ -115,6 +118,7 @@ export default function ConvertSection({ apiUrl }: Props) {
       .catch((caught: unknown) => {
         if ((caught as Error)?.name === "AbortError") return;
         setConfig(null);
+        setConfigReachable(caught instanceof ConvertError && caught.status > 0 && caught.code !== "requestFailed");
         setConfigError(
           caught instanceof ConvertError
             ? caught.message
@@ -199,16 +203,26 @@ export default function ConvertSection({ apiUrl }: Props) {
     setPhase("working");
 
     try {
-      const created = await startConvert(apiUrl, file, request, {
-        signal: controller.signal,
-        onProgress: (fraction) => setUploadPct(fraction),
-      });
-      setJob(created);
-      const finished = await pollJob(apiUrl, created.id, {
-        signal: controller.signal,
-        intervalMs: 700,
-        onUpdate: (next) => setJob(next),
-      });
+      let finished: Job;
+      if (config?.mode === "blob") {
+        // Vercel: upload straight to Vercel Blob, then one streamed convert call.
+        finished = await convertWithBlob(apiUrl, config, file, request, {
+          signal: controller.signal,
+          onUploadProgress: (fraction) => setUploadPct(fraction),
+          onUpdate: (next) => setJob(next),
+        });
+      } else {
+        const created = await startConvert(apiUrl, file, request, {
+          signal: controller.signal,
+          onProgress: (fraction) => setUploadPct(fraction),
+        });
+        setJob(created);
+        finished = await pollJob(apiUrl, created.id, {
+          signal: controller.signal,
+          intervalMs: 700,
+          onUpdate: (next) => setJob(next),
+        });
+      }
       setJob(finished);
       if (finished.state === "done") {
         setPhase("done");
@@ -240,7 +254,8 @@ export default function ConvertSection({ apiUrl }: Props) {
   const cancel = async () => {
     abortRef.current?.abort();
     abortRef.current = null;
-    if (job?.id) await cancelJob(apiUrl, job.id);
+    // On Vercel, aborting the request is the cancellation; there is no job to delete.
+    if (job?.id && config?.mode !== "blob") await cancelJob(apiUrl, job.id);
     setJob(null);
     setPhase("ready");
   };
@@ -266,7 +281,9 @@ export default function ConvertSection({ apiUrl }: Props) {
       : 0;
   const statusText =
     job?.state === "converting"
-      ? `Converting… ${serverPercent}%`
+      ? job.progress >= 1
+        ? "Saving the result…"
+        : `Converting… ${serverPercent}%`
       : job?.state === "queued"
         ? "In line — starting as soon as a slot is free…"
         : `Uploading… ${Math.round(uploadPct * 100)}%`;
@@ -301,11 +318,21 @@ export default function ConvertSection({ apiUrl }: Props) {
           )}
           {!checking && configError && (
             <div className="convert-alert">
-              <strong>The converter can't reach a bot server.</strong>
-              <p>
-                {configError} Run the bot (<code>cd bot &amp;&amp; npm start</code>) and enter its address in{" "}
-                <a href="#connect">Connect</a>, or build the site with <code>VITE_BOT_API_URL</code>.
-              </p>
+              {configReachable ? (
+                <>
+                  <strong>The converter isn't set up yet.</strong>
+                  <p>{configError}</p>
+                </>
+              ) : (
+                <>
+                  <strong>The converter can't reach a bot server.</strong>
+                  <p>
+                    {configError} Run the bot (<code>cd bot &amp;&amp; npm start</code>) and enter its address in{" "}
+                    <a href="#connect">Connect</a>, deploy the site to Vercel (see DEPLOY.md), or build the site with{" "}
+                    <code>VITE_BOT_API_URL</code>.
+                  </p>
+                </>
+              )}
             </div>
           )}
 

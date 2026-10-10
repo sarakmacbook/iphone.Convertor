@@ -111,7 +111,19 @@ const API_STORAGE_KEY = "sendable.botApiUrl";
 /** Login endpoint served by the bot (see bot/src/auth.ts). */
 export const TELEGRAM_LOGIN_PATH = "/telegram/login";
 
-export const DEFAULT_BOT_API_URL = normalizeApiUrl(import.meta.env?.VITE_BOT_API_URL ?? "");
+/**
+ * VITE_BOT_API_URL=same-origin (set automatically on Vercel, where the bot and
+ * converter run as this site's own /api functions) means "this site itself".
+ */
+function defaultApiUrl(raw: string): string {
+  const value = raw.trim();
+  if (value === "/" || value.toLowerCase() === "same-origin") {
+    return typeof window !== "undefined" ? window.location.origin : "";
+  }
+  return normalizeApiUrl(value);
+}
+
+export const DEFAULT_BOT_API_URL = defaultApiUrl(import.meta.env?.VITE_BOT_API_URL ?? "");
 
 const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1"];
 
