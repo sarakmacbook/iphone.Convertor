@@ -10,6 +10,10 @@ iPhone's HEVC `.MOV` at the original resolution. Unlike the size options, it is 
 the MP4 ends up bigger than the original, and its preview says so. Because it is a format change rather
 than a size reduction, these copies are **not** saved to the archive channel.
 
+The same server also exposes a small **HTTP API**, so the website's "Convert here" section can upload
+a video straight from a phone's gallery, convert it with the identical ffmpeg pipeline, and offer the
+smaller file for download — no Telegram account needed. See [Convert from the website](#5-convert-from-the-website-http-api).
+
 It's built with [grammY](https://grammy.dev) and uses ffmpeg (H.264 + AAC MP4, `+faststart`) to make
 the copy. The high-quality option keeps the source resolution and uses a quality-biased encode, but
 no re-encode can guarantee an identical picture or a smaller file. If a setting does not reduce the
@@ -39,9 +43,15 @@ npm start
 You should see:
 
 ```
+Using ffmpeg version 7.x
 Connected to Telegram as @MyVideoBot (https://t.me/MyVideoBot)
+Web conversion API on /api: up to 200 MB, 2 at a time, results kept 60 min
+Health check on port 8080
 Polling mode: listening for messages. Press Ctrl+C to stop.
 ```
+
+Only want the website's converter, with no Telegram bot? Leave `TELEGRAM_BOT_TOKEN` empty and set
+`WEB_ONLY=true`; the server then serves the HTTP API alone.
 
 Open the link and send it a video. For development, `npm run dev` restarts the bot when you change a file.
 
@@ -135,6 +145,54 @@ only — the greeting then works only for people who have pressed Start on the b
 > registered with BotFather), not on `localhost`. Everything else — including
 > `POST /telegram/login` — works locally.
 
+## 5. Convert from the website (HTTP API)
+
+The website's **Convert here** section is a real converter, not a mock-up: it uploads the video you
+pick from your gallery, this server converts it with ffmpeg, and the page shows the actual
+before-and-after file size with the finished MP4 to play and save.
+
+| Method and path | What it does |
+| --- | --- |
+| `GET /api/config` | Presets and limits, so the UI matches the server |
+| `POST /api/convert` | Multipart upload (`video` file + `preset=smaller`, or `width`/`height`); returns a job |
+| `GET /api/jobs/:id` | Job state, progress, and the real source and output sizes |
+| `GET /api/jobs/:id/download` | The converted MP4 (`?inline=1` to play it; supports `Range` so the player can seek) |
+| `DELETE /api/jobs/:id` | Cancel a running job and delete its files |
+
+From a terminal:
+
+```bash
+curl -F "video=@holiday.MOV" -F "preset=smaller" http://localhost:8080/api/convert
+# {"ok":true,"job":{"id":"8f0c...","state":"queued",...}}
+
+curl http://localhost:8080/api/jobs/8f0c...
+# {"ok":true,"job":{"state":"done","progress":1,
+#   "source":{"bytes":10393514,"width":1920,"height":1080},
+#   "output":{"name":"holiday_480p.mp4","bytes":286698,"width":854,"height":480,"smaller":true,...}}}
+
+curl -OJ http://localhost:8080/api/jobs/8f0c.../download
+```
+
+Uploads stream straight to a temporary directory, so memory use doesn't grow with the video size.
+Each job keeps its own folder, which is deleted when the job is cancelled, `WEB_JOB_TTL_MINUTES`
+after it finishes, and on shutdown. Conversions share the bot's `MAX_CONCURRENT_JOBS` limit; anything
+extra waits in line. Metadata such as GPS is stripped from the copy, videos are never stretched or
+upscaled, and — as in Telegram — the original is never touched.
+
+**Pointing the website at it.** The site calls `VITE_BOT_API_URL + /api/...`, or the address entered in
+the Connect section. In development the Vite dev server proxies `/api` to `http://127.0.0.1:8080` (or
+`BOT_API_PORT`), so running the bot and `npm run dev` side by side just works:
+
+```bash
+cd bot && WEB_ONLY=true npm run dev   # terminal 1
+npm run dev                           # terminal 2, opens the site with a working converter
+```
+
+Because this is a plain HTTP upload, `WEB_MAX_UPLOAD_MB` (default 200) is not tied to Telegram's
+20 MB bot limit — only to your host's disk and your users' patience. Set `WEB_API_KEY` if you want to
+require a shared secret; note that a browser can only send it if you bake it into the site with
+`VITE_BOT_API_KEY`, which makes it public, so it deters abuse rather than hiding anything.
+
 ## Polling or webhook?
 
 - **Polling** (default, when `WEBHOOK_URL` is empty): the bot asks Telegram for new messages. It works
@@ -169,6 +227,11 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `CORS_ORIGIN` | `*` | Website origins allowed to call `POST /telegram/login` (`*`, or a comma-separated list like `https://a.com,https://b.com`) |
 | `LOGIN_MAX_AGE_SECONDS` | `86400` | How long a website sign-in payload stays acceptable |
 | `LOGIN_GREETING` | `true` | Message the user in Telegram after a verified website sign-in |
+| `WEB_ONLY` | `false` | Run the HTTP server only, with no Telegram bot (token may stay empty) |
+| `WEB_CONVERT` | `true` | Serve the website's conversion API on `/api` |
+| `WEB_MAX_UPLOAD_MB` | `200` | Largest video the website may upload |
+| `WEB_JOB_TTL_MINUTES` | `60` | How long a finished conversion stays downloadable |
+| `WEB_API_KEY` | (empty) | Optional shared secret for every `/api` request |
 
 ### About the 20 MB limit
 
@@ -199,6 +262,9 @@ npm test
 
 These cover the size parsing, archive target checks, and real conversions with ffmpeg. They check
 the output dimensions for portrait, landscape, custom and no-upscale cases, and that cancelling works.
+They also cover the HTTP side: the streaming multipart reader (boundaries split across chunks, size
+caps) and the conversion API end to end — upload, progress, real before-and-after sizes, ranged
+download, custom dimensions, cancellation, size limits and the optional API key.
 
 ## Privacy
 
@@ -206,6 +272,11 @@ By default, videos are downloaded to a temporary folder only while they are bein
 finished preview is kept so the "Download this version" button can send it; it is deleted when the
 person sends another video, picks a new size, or after 6 hours of inactivity. Nothing is written
 anywhere else.
+
+Videos uploaded through the website's converter are handled the same way: they are written to a
+temporary folder only while the job runs, the finished copy stays downloadable for
+`WEB_JOB_TTL_MINUTES`, and then the whole folder is deleted. Nothing is archived unless you configure
+the Telegram channel below.
 
 If `TELEGRAM_ARCHIVE_CHAT_ID` is configured, only a smaller completed output is posted to that
 channel. The input and temporary files are still removed as above. The archive copy persists until a

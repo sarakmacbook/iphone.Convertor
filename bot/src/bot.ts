@@ -10,6 +10,8 @@ import { formatArchiveCaption } from "./archive.js";
 import type { Config } from "./config.js";
 import { CancelledError, resizeVideo } from "./ffmpeg.js";
 import { buttons, messages } from "./messages.js";
+import { outputFileName } from "./paths.js";
+import { Semaphore } from "./semaphore.js";
 import {
   PRESETS,
   findPreset,
@@ -51,42 +53,6 @@ const SUPPORTED_EXT = /\.(mov|mp4|m4v)$/i;
 const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
 const PROGRESS_EDIT_MS = 4000;
 
-/** Limits how many videos are converted at the same time. */
-class Semaphore {
-  private active = 0;
-  private waiting: Array<() => void> = [];
-
-  constructor(private readonly limit: number) {}
-
-  get isFull() {
-    return this.active >= this.limit;
-  }
-
-  acquire(signal: AbortSignal): Promise<() => void> {
-    const release = () => {
-      this.active--;
-      this.waiting.shift()?.();
-    };
-    if (this.active < this.limit) {
-      this.active++;
-      return Promise.resolve(release);
-    }
-    return new Promise((resolve, reject) => {
-      const start = () => {
-        signal.removeEventListener("abort", onAbort);
-        this.active++;
-        resolve(release);
-      };
-      const onAbort = () => {
-        this.waiting = this.waiting.filter((fn) => fn !== start);
-        reject(new CancelledError());
-      };
-      signal.addEventListener("abort", onAbort, { once: true });
-      this.waiting.push(start);
-    });
-  }
-}
-
 function sizeKeyboard(allowCustom: boolean) {
   const keyboard = new InlineKeyboard();
   for (const preset of PRESETS) keyboard.text(preset.label, `size:${preset.key}`).row();
@@ -115,14 +81,6 @@ const previewKeyboard = (archiveMessageId?: number) =>
 
 const retryKeyboard = () =>
   new InlineKeyboard().text(buttons.tryAgain, "go").row().text(buttons.changeSize, "change");
-
-function baseName(name: string) {
-  const leaf = name.replace(/\\/g, "/").split("/").pop() ?? "";
-  return leaf
-    .replace(/\.[^.]+$/, "")
-    .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_")
-    .slice(0, 120) || "video";
-}
 
 async function removeDir(dir?: string) {
   if (dir) await rm(dir, { recursive: true, force: true }).catch(() => undefined);
@@ -227,7 +185,7 @@ export function createBot(config: Config, ffmpegBinary: string) {
         return;
       }
 
-      const outputName = `${baseName(video.fileName)}_preview.mp4`;
+      const outputName = outputFileName(video.fileName, choice);
       const output = path.join(workDir, outputName);
       let lastEdit = Date.now();
       let lastPercent = -1;

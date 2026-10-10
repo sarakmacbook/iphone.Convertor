@@ -27,6 +27,8 @@ function readBoolean(name: string, fallback: boolean): boolean {
 
 export type Config = {
   token: string;
+  /** False when the server runs the web API only, with no Telegram bot. */
+  telegramEnabled: boolean;
   apiRoot: string;
   /** True when TELEGRAM_API_ROOT points at a self-hosted Bot API server. */
   localApi: boolean;
@@ -50,16 +52,28 @@ export type Config = {
   archiveChatId?: string;
   /** Require an explicit opt-in before writing to a public archive channel. */
   archiveAllowPublic: boolean;
+  /** Serve the browser conversion API (GET /api/config, POST /api/convert, ...). */
+  webConvert: boolean;
+  /** Largest video the browser may upload, in MB. */
+  webMaxUploadMB: number;
+  /** How long a finished conversion stays downloadable, in minutes. */
+  webJobTtlMinutes: number;
+  /** Optional shared secret for the web API. Empty means open. */
+  webApiKey?: string;
 };
 
 export function loadConfig(): Config {
-  const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  if (!token) {
+  const token = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
+  // WEB_ONLY=true runs the browser conversion API without a Telegram bot, which
+  // is handy for local testing and for hosts that only serve the website.
+  const webOnly = readBoolean("WEB_ONLY", false);
+  if (!token && !webOnly) {
     throw new Error(
-      "TELEGRAM_BOT_TOKEN is missing. Create a bot with @BotFather, then set the token in bot/.env or your host's environment settings.",
+      "TELEGRAM_BOT_TOKEN is missing. Create a bot with @BotFather, then set the token in bot/.env or your host's environment settings. " +
+        "To run just the website's conversion API without Telegram, set WEB_ONLY=true.",
     );
   }
-  if (!/^\d+:[\w-]{30,}$/.test(token)) {
+  if (token && !/^\d+:[\w-]{30,}$/.test(token)) {
     throw new Error("TELEGRAM_BOT_TOKEN doesn't look like a token from @BotFather (expected 123456:ABC...).");
   }
 
@@ -93,8 +107,11 @@ export function loadConfig(): Config {
     }
   }
 
+  const webMaxUploadMB = readNumber("WEB_MAX_UPLOAD_MB", 200, 1, 2000);
+
   return {
     token,
+    telegramEnabled: Boolean(token),
     apiRoot,
     localApi,
     maxUploadMB,
@@ -112,5 +129,9 @@ export function loadConfig(): Config {
     loginGreeting: readBoolean("LOGIN_GREETING", true),
     archiveChatId: normalizeArchiveChatId(process.env.TELEGRAM_ARCHIVE_CHAT_ID),
     archiveAllowPublic: readBoolean("TELEGRAM_ARCHIVE_ALLOW_PUBLIC", false),
+    webConvert: readBoolean("WEB_CONVERT", true),
+    webMaxUploadMB,
+    webJobTtlMinutes: readNumber("WEB_JOB_TTL_MINUTES", 60, 1, 1440),
+    webApiKey: process.env.WEB_API_KEY?.trim() || undefined,
   };
 }

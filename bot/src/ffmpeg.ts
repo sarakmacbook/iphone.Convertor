@@ -91,6 +91,79 @@ export function parseOutputInfo(log: string): ResizeResult {
   return result;
 }
 
+export type ProbeResult = {
+  duration?: number;
+  width?: number;
+  height?: number;
+  codec?: string;
+  hasAudio: boolean;
+};
+
+/**
+ * Reads dimensions, duration and rotation out of ffmpeg's banner. iPhone videos
+ * are stored landscape with a 90° rotation flag, so the upright size is what a
+ * person expects to see; the two are swapped here.
+ */
+export function parseProbeLog(log: string): ProbeResult {
+  const result: ProbeResult = { hasAudio: /Stream #\d+:\d+.*Audio: /.test(log) };
+
+  const duration = log.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/);
+  if (duration) {
+    const seconds = parseClock(`${duration[1]}:${duration[2]}:${duration[3]}`);
+    if (seconds > 0) result.duration = seconds;
+  }
+
+  const video = log.match(/Stream #\d+:\d+[^\n]*?Video: (\w+)[^\n]*?(\d{2,5})x(\d{2,5})/);
+  if (video) {
+    result.codec = video[1];
+    let width = Number(video[2]);
+    let height = Number(video[3]);
+    const rotation =
+      log.match(/displaymatrix:[^\n]*?rotation of (-?\d+(?:\.\d+)?) degrees/) ??
+      log.match(/rotate\s*:\s*(-?\d+(?:\.\d+)?)/);
+    const degrees = rotation ? Math.abs(Number(rotation[1])) % 360 : 0;
+    if (degrees === 90 || degrees === 270) [width, height] = [height, width];
+    result.width = width;
+    result.height = height;
+  }
+
+  return result;
+}
+
+/**
+ * Asks ffmpeg about a file without decoding it. ffmpeg exits non-zero when it
+ * is given an input and no output, which is the expected result here.
+ */
+export function probeVideo(binary: string, input: string, signal?: AbortSignal): Promise<ProbeResult> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new CancelledError());
+    const child = spawn(binary, ["-hide_banner", "-nostdin", "-i", input], {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    let log = "";
+    const abort = () => child.kill("SIGKILL");
+    signal?.addEventListener("abort", abort, { once: true });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      log += chunk.toString();
+      if (log.length > 100_000) log = log.slice(-100_000);
+    });
+    child.on("error", (error) => {
+      signal?.removeEventListener("abort", abort);
+      reject(error);
+    });
+    child.on("close", () => {
+      signal?.removeEventListener("abort", abort);
+      if (signal?.aborted) return reject(new CancelledError());
+      const info = parseProbeLog(log);
+      if (!info.width && !info.height && !info.duration) {
+        return reject(new Error("ffmpeg could not read a video stream from that file."));
+      }
+      resolve(info);
+    });
+  });
+}
+
 export function resizeVideo(options: {
   binary: string;
   input: string;

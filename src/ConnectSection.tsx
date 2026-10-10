@@ -201,7 +201,8 @@ function ConnectSection({
           <h2 id="connect-title">Connect to the bot.</h2>
           <p>
             Open the chat in Telegram, scan it from your phone, point this page at a bot you run
-            yourself — and sign in with Telegram to link your account.
+            yourself — and sign in with Telegram to link your account. The same server address is what
+            the <a href="#convert">Convert here</a> section uploads videos to.
           </p>
         </div>
       </div>
