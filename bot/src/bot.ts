@@ -1,10 +1,6 @@
-import { createWriteStream } from "node:fs";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from "grammy";
 import { formatArchiveCaption } from "./archive.js";
 import type { Config } from "./config.js";
@@ -12,6 +8,7 @@ import { CancelledError, resizeVideo } from "./ffmpeg.js";
 import { buttons, messages } from "./messages.js";
 import { outputFileName } from "./paths.js";
 import { Semaphore } from "./semaphore.js";
+import { downloadTelegramFile } from "./telegram-download.js";
 import {
   PRESETS,
   findPreset,
@@ -124,23 +121,6 @@ export function createBot(config: Config, ffmpegBinary: string) {
     await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => undefined);
   };
 
-  const downloadTelegramFile = async (fileId: string, destination: string, signal: AbortSignal) => {
-    const file = await bot.api.getFile(fileId);
-    if (!file.file_path) throw new Error("Telegram did not return a file path");
-
-    // A self-hosted Bot API server in --local mode returns an absolute path on its own disk.
-    if (config.localApi && path.isAbsolute(file.file_path)) return file.file_path;
-
-    const url = `${config.apiRoot}/file/bot${config.token}/${file.file_path}`;
-    const response = await fetch(url, { signal });
-    if (!response.ok || !response.body) throw new Error(`Download failed with HTTP ${response.status}`);
-    await pipeline(
-      Readable.fromWeb(response.body as unknown as WebReadableStream<Uint8Array>),
-      createWriteStream(destination),
-    );
-    return destination;
-  };
-
   const runJob = async (chatId: number, session: Session) => {
     const video = session.video;
     const choice = session.choice;
@@ -176,7 +156,12 @@ export function createBot(config: Config, ffmpegBinary: string) {
 
       let input: string;
       try {
-        input = await downloadTelegramFile(video.fileId, path.join(workDir, "input"), controller.signal);
+        input = await downloadTelegramFile(
+          { api: bot.api, apiRoot: config.apiRoot, token: config.token, localApi: config.localApi },
+          video.fileId,
+          path.join(workDir, "input"),
+          controller.signal,
+        );
       } catch (error) {
         if (controller.signal.aborted) throw new CancelledError();
         console.error("Download failed:", error);

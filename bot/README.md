@@ -193,6 +193,64 @@ Because this is a plain HTTP upload, `WEB_MAX_UPLOAD_MB` (default 200) is not ti
 require a shared secret; note that a browser can only send it if you bake it into the site with
 `VITE_BOT_API_KEY`, which makes it public, so it deters abuse rather than hiding anything.
 
+## 6. MP4 converter bot (a second, separate bot)
+
+The repository also has a **MP4 converter bot**. It does one thing: someone sends it a video and it
+sends back a standard **MP4** (H.264 video + AAC audio). It accepts almost any format, including
+MOV, MKV, WebM, AVI, 3GP, MTS, WMV, and FLV, plus GIF-style animations and round video notes. The
+resolution stays the same, iPhone rotation is applied so the video plays upright, and location
+metadata is removed. The original file is never changed.
+
+It is a separate Telegram bot with its own token, so it runs next to the Sendable bot without
+interfering with it. It uses the same ffmpeg pipeline and the same "Convert to MP4 (same dimensions)"
+settings as Sendable.
+
+### Set it up
+
+1. In [@BotFather](https://t.me/BotFather), send `/newbot` again to create a **second** bot (for
+   example `MyMp4Bot`), and copy its token.
+2. Put the token in `bot/.env`:
+
+   ```bash
+   MP4_BOT_TOKEN=987654321:BB…
+   ```
+
+3. Run it (it uses the same ffmpeg, Node.js and `.env` as the Sendable bot):
+
+   ```bash
+   cd bot
+   npm install
+   npm run build
+   npm run start:mp4
+   ```
+
+   You should see `MP4 converter connected to Telegram as @MyMp4Bot`, then
+   `Polling mode: listening for videos`. For development, `npm run dev:mp4` restarts it when you change a file.
+
+To run it in Docker, use the same image with a different command:
+
+```bash
+docker build -t sendable-bot bot
+docker run --env-file bot/.env sendable-bot node dist/mp4-index.js
+```
+
+### Limits and behavior
+
+- **Input**: up to `MP4_MAX_UPLOAD_MB` (default `20`, Telegram's download limit for bots). For larger
+  videos, run a self-hosted Bot API server and set `TELEGRAM_API_ROOT` (see
+  [About the 20 MB limit](#about-the-20-mb-limit)).
+- **Output**: the MP4 is sent back as a video, so it must be under Telegram's 50 MB upload limit for
+  bots. A longer or higher-bitrate video can produce a bigger MP4 than that. The bot then says so and
+  sends nothing.
+- **One conversion per chat**: a second video waits until the first one finishes. `/cancel` stops it.
+  At most `MP4_MAX_CONCURRENT_JOBS` (default `2`) conversions run at once across all chats.
+- **Storage**: each video is handled in a temporary folder that is deleted when the conversion
+  finishes or is cancelled. Nothing is archived, and the MP4 bot does not use the Telegram archive channel.
+- **Commands**: `/start`, `/help`, `/cancel`.
+
+Because re-encoding can change detail slightly, check the MP4 before you rely on it. The MP4 bot is
+polling-only and needs no public address.
+
 ## Polling or webhook?
 
 - **Polling** (default, when `WEBHOOK_URL` is empty): the bot asks Telegram for new messages. It works
@@ -232,6 +290,9 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `WEB_MAX_UPLOAD_MB` | `200` | Largest video the website may upload |
 | `WEB_JOB_TTL_MINUTES` | `60` | How long a finished conversion stays downloadable |
 | `WEB_API_KEY` | (empty) | Optional shared secret for every `/api` request |
+| `MP4_BOT_TOKEN` | (required for the MP4 bot) | Token of the second bot that converts videos to MP4 (`npm run start:mp4`) |
+| `MP4_MAX_UPLOAD_MB` | `20` | Largest video the MP4 bot accepts |
+| `MP4_MAX_CONCURRENT_JOBS` | `2` | Conversions the MP4 bot runs at once, across all chats |
 
 ### About the 20 MB limit
 
@@ -259,6 +320,10 @@ That's better than failing on someone's upload.
 ```bash
 npm test
 ```
+
+The MP4 bot's tests run a real conversion (MKV in, H.264/AAC MP4 out, odd dimensions rounded to even)
+and drive the bot through a local stand-in for the Telegram Bot API: a video in, an MP4 out, plus
+refusals, failures and `/cancel`.
 
 These cover the size parsing, archive target checks, and real conversions with ffmpeg. They check
 the output dimensions for portrait, landscape, custom and no-upscale cases, and that cancelling works.
