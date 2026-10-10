@@ -15,6 +15,7 @@ import {
   findPreset,
   formatDuration,
   formatMB,
+  isConvertOnly,
   parseCustomSize,
   presetChoice,
   type SizeChoice,
@@ -258,8 +259,10 @@ export function createBot(config: Config, ffmpegBinary: string) {
       if (controller.signal.aborted) throw new CancelledError();
 
       const inputBytes = video.sizeBytes ?? (await stat(input)).size;
+      // "Convert to MP4" is a format change, so it is always sent. Size options never send a larger copy.
+      const convertOnly = isConvertOnly(choice);
       const smaller = outBytes < inputBytes;
-      if (!smaller) {
+      if (!convertOnly && !smaller) {
         await setStatus(messages.noSizeReduction, false);
         await bot.api.sendMessage(chatId, messages.noSizeReduction, {
           reply_markup: sizeKeyboard(config.allowCustom),
@@ -273,7 +276,8 @@ export function createBot(config: Config, ffmpegBinary: string) {
 
       let archiveMessageId: number | undefined;
       let outgoingVideo: InputFile | string = new InputFile(output, outputName);
-      if (config.archiveChatId) {
+      // The archive only keeps reduced copies, so conversions that keep the size are not archived.
+      if (config.archiveChatId && !convertOnly) {
         try {
           const archived = await bot.api.sendVideo(
             config.archiveChatId,
@@ -307,13 +311,15 @@ export function createBot(config: Config, ffmpegBinary: string) {
       }
 
       await bot.api.sendVideo(chatId, outgoingVideo, {
-        caption: messages.previewReady(
-          formatMB(inputBytes),
-          formatMB(outBytes),
-          choice.label,
-          smaller,
-          Boolean(archiveMessageId),
-        ),
+        caption: convertOnly
+          ? messages.convertReady(formatMB(inputBytes), formatMB(outBytes), choice.label)
+          : messages.previewReady(
+              formatMB(inputBytes),
+              formatMB(outBytes),
+              choice.label,
+              smaller,
+              Boolean(archiveMessageId),
+            ),
         width: result.width,
         height: result.height,
         duration: result.duration ? Math.round(result.duration) : undefined,
@@ -478,7 +484,8 @@ export function createBot(config: Config, ffmpegBinary: string) {
     if (!preset) return;
     session.choice = presetChoice(preset);
     session.stage = "confirm";
-    await ctx.reply(messages.confirm(preset.label), { reply_markup: confirmKeyboard() });
+    const prompt = isConvertOnly(session.choice) ? messages.confirmConvert(preset.label) : messages.confirm(preset.label);
+    await ctx.reply(prompt, { reply_markup: confirmKeyboard() });
   });
 
   bot.callbackQuery("go", async (ctx) => {

@@ -6,7 +6,7 @@ const archiveDisclosure =
   "When you create a preview, the finished copy will also be saved in the bot owner's Telegram archive channel. Anyone with access to that channel—including the public if it is public—may view it.";
 
 const welcomeText = (limitMB: number, archiveEnabled = false) =>
-  `Hi, I'm Sendable. Send an iPhone video and I'll try to make a smaller copy for you to review. ` +
+  `Hi, I'm Sendable. Send an iPhone video and I'll convert it to a standard MP4, or make a smaller copy, for you to review. ` +
   `Videos up to ${limitMB} MB work best. Re-encoding can change detail slightly, and not every video can be made smaller without a quality trade-off. Your original is never changed.\n\n` +
   `Tip: send it as a file (📎 → File) to keep the full quality of your original.` +
   (archiveEnabled ? `\n\n${archiveDisclosure}` : "");
@@ -27,10 +27,12 @@ export const messages = {
   help: (limitMB: number, allowCustom: boolean, archiveEnabled = false) =>
     `I make a copy of a video you send.\n\n` +
     `1. Send a video (MOV or MP4, up to ${limitMB} MB).\n` +
-    `2. Choose High quality (same dimensions), Recommended (720p), or Smaller (480p)` +
+    `2. Choose Convert to MP4 (same dimensions) to get a standard MP4 at the original size, ` +
+    `High quality (same dimensions), Recommended (720p), or Smaller (480p)` +
     `${allowCustom ? ", or your own width and height" : ""}.\n` +
     `3. Preview it and check the real file size before downloading.\n\n` +
-    `Re-encoding can change detail slightly, and a high-quality conversion may not reduce every file. Your original is never changed.\n\n` +
+    `Convert to MP4 always sends the MP4, even if it's bigger. The size options only send a copy that's smaller than your original. ` +
+    `Re-encoding can change detail slightly. Your original is never changed.\n\n` +
     (archiveEnabled ? `${archiveDisclosure}\n\n` : "") +
     `Commands:\n/help: show this message\n/cancel: stop the current resize`,
 
@@ -52,6 +54,10 @@ export const messages = {
 
   customTooLarge: (max: number) =>
     `Those dimensions are above this bot's ${max} pixel limit. Choose a smaller width and height.`,
+
+  confirmConvert: (label: string) =>
+    `I'll convert this video to an MP4 using ${label}. The resolution stays the same, and the MP4 is sent even if it's bigger than your original. ` +
+    `Re-encoding can change detail slightly. Your original stays unchanged, and this MP4 isn't saved to the archive channel. Create the MP4 now?`,
 
   confirm: (label: string) =>
     `I'll make a copy using ${label}. Re-encoding can change detail slightly, and this setting may not make every file smaller. ` +
@@ -76,6 +82,11 @@ export const messages = {
       ? "Watch it and check the size before downloading. Re-encoding can change detail slightly."
       : "This setting didn't make the file smaller. Try a smaller size instead.") +
     (archived ? "\n\nA copy was saved to the bot owner's Telegram archive channel." : ""),
+
+  convertReady: (original: string, converted: string, label: string) =>
+    `Your MP4 is ready.\n\n` +
+    `${label}\nOriginal: ${original}\nNew MP4: ${converted}\n\n` +
+    `The resolution is unchanged. Check it before downloading. The MP4 may be bigger or smaller than the original.`,
 
   saveHint:
     "Here's the file. Tap the download icon on it to save it, or Share to send it. Your original is still unchanged.",

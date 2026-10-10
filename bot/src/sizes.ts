@@ -3,7 +3,7 @@
  * and ffmpeg process code so it is easy to test.
  */
 
-export type PresetKey = "balanced" | "smaller" | "keep";
+export type PresetKey = "convert" | "balanced" | "smaller" | "keep";
 
 export type SizeChoice =
   | { kind: "preset"; key: PresetKey; label: string }
@@ -16,9 +16,22 @@ export type Preset = {
   /** Target length of the video's shorter side, or null to keep dimensions. */
   shortSide: number | null;
   crf: number;
+  /**
+   * Conversion-only presets (format change, no size goal) are always sent, even if the
+   * MP4 ends up bigger than the original. Size-reducing presets never send a larger copy.
+   */
+  alwaysSend?: boolean;
 };
 
 export const PRESETS: Preset[] = [
+  {
+    key: "convert",
+    label: "Convert to MP4 (same dimensions)",
+    detail: "Re-encodes to a standard MP4 (H.264 + AAC) at the original resolution. Always sent, even if the file gets bigger.",
+    shortSide: null,
+    crf: 20,
+    alwaysSend: true,
+  },
   {
     key: "keep",
     label: "High quality (same dimensions)",
@@ -50,6 +63,11 @@ export function findPreset(key: string): Preset | undefined {
 
 export function presetChoice(preset: Preset): SizeChoice {
   return { kind: "preset", key: preset.key, label: preset.label };
+}
+
+/** True for the format-conversion option, which is sent even when the file doesn't shrink. */
+export function isConvertOnly(choice: SizeChoice): boolean {
+  return choice.kind === "preset" && findPreset(choice.key)?.alwaysSend === true;
 }
 
 export type CustomParseResult =
