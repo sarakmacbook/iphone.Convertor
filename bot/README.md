@@ -57,6 +57,48 @@ Telegram" button then opens your bot. The choice is saved in that browser. You c
 
 The website only ever needs the public username. The token stays on the bot server.
 
+## 4. Sign-in on the website (Telegram Login Widget)
+
+The Connect section also has a **"Sign in with Telegram"** button — Telegram's official
+[Login Widget](https://core.telegram.org/widgets/login) — so visitors can link their Telegram
+account to the site with one tap. It works like this:
+
+1. The visitor taps the button and confirms in Telegram. The widget hands the browser a signed
+   payload: `id`, `first_name`, `last_name`, `username`, `photo_url`, `auth_date` and a `hash`.
+2. The site POSTs that payload to **`POST /telegram/login`** on this bot server.
+3. The server proves it really came from Telegram (HMAC-SHA-256 of the data-check-string, keyed
+   with `SHA256(token)` — the official algorithm), rejects stale payloads, and answers
+   `{ok: true, user: {...}}`. With `LOGIN_GREETING=true` (default) the bot also sends the visitor
+   a short "you signed in on the website" message in Telegram.
+4. The site shows a signed-in card and links back into the chat with `?start=web-<id>`, which this
+   bot answers with a "Connected!" welcome.
+
+The token never leaves this server, and the site never trusts the payload until the server
+verifies it.
+
+### One-time setup
+
+1. **Link the site's domain to your bot.** In Telegram, send `/setdomain` to
+   [@BotFather](https://t.me/BotFather), pick your bot, and enter the domain the site runs on
+   (for example `sendable.vercel.app`). Telegram only shows the login button on that exact
+   domain — without this step the widget refuses to work.
+2. **Tell the site where this server is.** Enter the address in the Connect section's
+   "Your bot's server address" field (saved per browser), or build the site with
+   `VITE_BOT_API_URL=https://your-bot.example.com npm run build`. The site calls
+   `VITE_BOT_API_URL + /telegram/login`.
+3. **Allow the site's origin (recommended).** `CORS_ORIGIN` defaults to `*`, which already works.
+   To tighten it, list your origins: `CORS_ORIGIN=https://sendable.vercel.app,https://staging.example`.
+
+By default the widget asks for "write" access (`VITE_TELEGRAM_REQUEST_ACCESS=write` on the site),
+which is what lets the bot send the greeting to people who haven't started a chat yet. Build the
+site with `VITE_TELEGRAM_REQUEST_ACCESS=read` (or any non-`write` value) to ask for the profile
+only — the greeting then works only for people who have pressed Start on the bot.
+
+> Local note: Telegram compares the page's domain with the one you set via `/setdomain`, so the
+> widget only works on that domain. Test it on your deployed site (or a tunnel/preview domain you
+> registered with BotFather), not on `localhost`. Everything else — including
+> `POST /telegram/login` — works locally.
+
 ## Polling or webhook?
 
 - **Polling** (default, when `WEBHOOK_URL` is empty): the bot asks Telegram for new messages. It works
@@ -65,7 +107,7 @@ The website only ever needs the public username. The token stays on the bot serv
   Telegram then POSTs updates to `WEBHOOK_URL + WEBHOOK_PATH` (default `/telegram/webhook`). Use this
   on hosts that sleep when idle or only run web services.
 
-Either way, `GET /health` on `PORT` returns `{"ok":true,"bot":"MyVideoBot",...}` for your host's health checks.
+Either way, `GET /health` on `PORT` returns `{"ok":true,"bot":"MyVideoBot",...}` for your host's health checks, and `POST /telegram/login` on the same port verifies website sign-ins (below).
 
 The bot isn't a good fit for Vercel serverless functions. Converting a video takes longer than
 those functions are allowed to run, and the bot keeps each chat's state in memory. Deploy the website
@@ -86,6 +128,9 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `TELEGRAM_API_ROOT` | `https://api.telegram.org` | Point at a self-hosted Bot API server |
 | `WEBHOOK_URL` / `WEBHOOK_PATH` / `WEBHOOK_SECRET` | (empty) | Turn on webhook mode |
 | `PORT` | `8080` | Health check and webhook port |
+| `CORS_ORIGIN` | `*` | Website origins allowed to call `POST /telegram/login` (`*`, or a comma-separated list like `https://a.com,https://b.com`) |
+| `LOGIN_MAX_AGE_SECONDS` | `86400` | How long a website sign-in payload stays acceptable |
+| `LOGIN_GREETING` | `true` | Message the user in Telegram after a verified website sign-in |
 
 ### About the 20 MB limit
 

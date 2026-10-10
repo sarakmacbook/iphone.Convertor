@@ -38,6 +38,12 @@ export type Config = {
   webhookPath: string;
   webhookSecret?: string;
   port: number;
+  /** "*", or a comma-separated list of website origins allowed to call the login endpoint. */
+  corsOrigin: string;
+  /** How long a Telegram Login Widget payload stays acceptable, in seconds. */
+  loginMaxAgeSeconds: number;
+  /** Send a "you signed in on the website" message in Telegram after a verified sign-in. */
+  loginGreeting: boolean;
 };
 
 export function loadConfig(): Config {
@@ -72,6 +78,15 @@ export function loadConfig(): Config {
     throw new Error("WEBHOOK_URL must start with https:// (Telegram only sends webhooks over HTTPS).");
   }
 
+  const corsOrigin = (process.env.CORS_ORIGIN?.trim() || "*").replace(/\s+/g, "");
+  for (const origin of corsOrigin.split(",").filter(Boolean)) {
+    if (origin !== "*" && !/^https?:\/\/[^/]+$/i.test(origin)) {
+      throw new Error(
+        `CORS_ORIGIN entries must be "*" or a plain origin like https://sendable.vercel.app (got "${origin}").`,
+      );
+    }
+  }
+
   return {
     token,
     apiRoot,
@@ -86,5 +101,8 @@ export function loadConfig(): Config {
     webhookPath: process.env.WEBHOOK_PATH?.trim() || "/telegram/webhook",
     webhookSecret: process.env.WEBHOOK_SECRET?.trim() || undefined,
     port: readNumber("PORT", 8080, 1, 65535),
+    corsOrigin,
+    loginMaxAgeSeconds: readNumber("LOGIN_MAX_AGE_SECONDS", 86400, 60, 604800),
+    loginGreeting: readBoolean("LOGIN_GREETING", true),
   };
 }

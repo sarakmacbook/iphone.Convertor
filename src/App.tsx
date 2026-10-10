@@ -7,7 +7,7 @@ import {
 } from "react";
 import ConnectSection from "./ConnectSection";
 import { ArrowIcon, CheckIcon, CopyIcon, TelegramIcon } from "./icons";
-import { botShareUrl, botUrl, useBotUsername } from "./telegram";
+import { botShareUrl, botUrl, useBotApiUrl, useBotUsername } from "./telegram";
 
 type Stage =
   | "welcome"
@@ -386,6 +386,7 @@ function SizeEstimator() {
 
 function App() {
   const bot = useBotUsername();
+  const api = useBotApiUrl();
   const telegramUrl = botUrl(bot.username);
   const shareUrl = botShareUrl(bot.username);
   const [stage, setStage] = useState<Stage>("welcome");
@@ -1278,6 +1279,10 @@ function App() {
           isDefault={bot.isDefault}
           onConnect={bot.setUsername}
           onReset={bot.resetUsername}
+          apiUrl={api.apiUrl}
+          isDefaultApi={api.isDefault}
+          onConnectApi={api.setApiUrl}
+          onResetApi={api.resetApiUrl}
         />
       </main>
 

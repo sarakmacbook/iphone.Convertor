@@ -98,3 +98,114 @@ export function useBotUsername() {
     isDefault: username === DEFAULT_BOT_USERNAME,
   };
 }
+
+/* -------------------------------------------------------------------------
+   Bot server URL: where the site sends Telegram Login Widget payloads to be
+   verified (the bot's POST /telegram/login endpoint). Same pattern as the
+   username: VITE_BOT_API_URL at build time, overridable per browser in the
+   Connect section. The bot's token never comes to the website.
+   ------------------------------------------------------------------------- */
+
+const API_STORAGE_KEY = "sendable.botApiUrl";
+
+/** Login endpoint served by the bot (see bot/src/auth.ts). */
+export const TELEGRAM_LOGIN_PATH = "/telegram/login";
+
+export const DEFAULT_BOT_API_URL = normalizeApiUrl(import.meta.env?.VITE_BOT_API_URL ?? "");
+
+const LOCAL_HOSTS = ["localhost", "127.0.0.1", "[::1]", "::1"];
+
+/**
+ * Accepts "https://host", "http://localhost:8080" or a full URL with a path,
+ * and returns a normalized base (no trailing slash). "" when unusable:
+ * only https is allowed, plus http for localhost while developing.
+ */
+export function normalizeApiUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  try {
+    const url = new URL(trimmed);
+    const isLocal = LOCAL_HOSTS.includes(url.hostname);
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) return "";
+    return `${url.origin}${url.pathname.replace(/\/+$/, "")}`;
+  } catch {
+    return "";
+  }
+}
+
+export function apiUrlError(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return "Enter the address your bot runs on, like https://my-bot.example.com";
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return "That doesn't look like a web address. Try https://my-bot.example.com";
+  }
+  const isLocal = LOCAL_HOSTS.includes(url.hostname);
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && isLocal)) {
+    return "The address must start with https:// (http:// is only allowed for localhost).";
+  }
+  return null;
+}
+
+export function apiHost(apiUrl: string): string {
+  try {
+    return new URL(apiUrl).host;
+  } catch {
+    return apiUrl;
+  }
+}
+
+function readStoredApiUrl(): string | null {
+  try {
+    const value = window.localStorage.getItem(API_STORAGE_KEY);
+    return value ? normalizeApiUrl(value) || null : null;
+  } catch {
+    return null;
+  }
+}
+
+export function useBotApiUrl() {
+  const [apiUrl, setApiUrlState] = useState<string>(
+    () => readStoredApiUrl() ?? DEFAULT_BOT_API_URL,
+  );
+
+  const setApiUrl = useCallback((value: string) => {
+    const clean = normalizeApiUrl(value);
+    if (!clean) return false;
+    setApiUrlState(clean);
+    try {
+      if (clean === DEFAULT_BOT_API_URL) window.localStorage.removeItem(API_STORAGE_KEY);
+      else window.localStorage.setItem(API_STORAGE_KEY, clean);
+    } catch {
+      // Private mode: the choice still applies until the page is closed.
+    }
+    return true;
+  }, []);
+
+  const resetApiUrl = useCallback(() => {
+    setApiUrlState(DEFAULT_BOT_API_URL);
+    try {
+      window.localStorage.removeItem(API_STORAGE_KEY);
+    } catch {
+      // Ignored, same as above.
+    }
+  }, []);
+
+  // Keep several open tabs in sync.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === API_STORAGE_KEY) setApiUrlState(readStoredApiUrl() ?? DEFAULT_BOT_API_URL);
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  return {
+    apiUrl,
+    setApiUrl,
+    resetApiUrl,
+    isDefault: apiUrl === DEFAULT_BOT_API_URL,
+  };
+}
