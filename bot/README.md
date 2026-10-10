@@ -21,6 +21,10 @@ file, the bot will not send or archive a larger copy. The 720p/480p options redu
 soften detail. Videos are never stretched or upscaled, iPhone rotation is respected, and metadata such
 as GPS location is removed from the copy.
 
+> **Prefer one Vercel project with no server to run?** The same bot, sign-in check and website converter
+> also run as Vercel Functions. See [Option A in DEPLOY.md](../DEPLOY.md#option-a-deploy-everything-to-vercel).
+> This folder is the always-on server version (no per-video time limit, `/cancel`, and the MP4 bot).
+
 ## 1. Create your bot
 
 1. In Telegram, open [@BotFather](https://t.me/BotFather) and send `/newbot`.

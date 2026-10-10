@@ -21,13 +21,21 @@ export type ConvertLimits = {
   maxDimension: number;
   maxConcurrentJobs: number;
   jobTtlMinutes: number;
+  /** Vercel: the function time limit, which caps how long a video can be. */
+  maxSeconds?: number;
 };
 
 export type ServerConfig = {
   ok: true;
+  /**
+   * "jobs" (or missing): the long-running bot server — multipart upload, then poll.
+   * "blob": the Vercel deployment — upload to Vercel Blob, then one streamed convert call.
+   */
+  mode?: "jobs" | "blob";
   limits: ConvertLimits;
   presets: Preset[];
   accepts: string[];
+  upload?: { handleUploadUrl: string; access: "public"; prefix: string };
 };
 
 export type JobState = "queued" | "converting" | "done" | "error" | "cancelled";
@@ -42,8 +50,10 @@ export type JobMedia = {
 
 export type JobOutput = JobMedia & {
   smaller: boolean;
-  /** Relative to the bot server, e.g. "/api/jobs/<id>/download". */
+  /** Relative to the bot server, e.g. "/api/jobs/<id>/download", or an absolute Blob URL on Vercel. */
   url: string;
+  /** Vercel Blob only: the same file with a "save as" Content-Disposition. */
+  downloadUrl?: string;
 };
 
 export type Job = {
@@ -214,7 +224,181 @@ export async function pollJob(
 /** Full URL for the converted file; `inline` plays it in the page instead of downloading. */
 export function downloadUrl(baseUrl: string, job: Job, inline = false): string {
   if (!job.output) return "";
+  // Vercel Blob: the file is already at a public URL.
+  if (/^https?:\/\//i.test(job.output.url)) {
+    return inline ? job.output.url : (job.output.downloadUrl ?? job.output.url);
+  }
   return apiUrl(baseUrl, job.output.url, inline ? { inline: "1" } : undefined);
+}
+
+/* ---------- Vercel mode: upload to Vercel Blob, then one streamed convert call ---------- */
+
+type BlobEvent =
+  | { type: "status"; state: "downloading" | "converting" | "saving" }
+  | { type: "source"; source: JobMedia }
+  | { type: "progress"; progress: number }
+  | { type: "done"; job: Job }
+  | { type: "error"; error: { code: string; message: string } };
+
+function randomId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Keeps the name readable but safe for a Blob path. */
+function blobFileName(name: string): string {
+  const clean = name.replace(/[\\/?#%\u0000-\u001f\u007f]/g, "_").slice(-120);
+  return clean || "video.mov";
+}
+
+function guessContentType(file: File): string {
+  if (file.type) return file.type;
+  if (/\.mov$/i.test(file.name)) return "video/quicktime";
+  if (/\.m4v$/i.test(file.name)) return "video/x-m4v";
+  return "video/mp4";
+}
+
+export type BlobConvertOptions = {
+  signal?: AbortSignal;
+  /** 0..1 while the video uploads to Vercel Blob. */
+  onUploadProgress?: (fraction: number) => void;
+  /** Called with a job snapshot as the server reports progress. */
+  onUpdate?: (job: Job) => void;
+};
+
+/**
+ * Uploads straight from the browser to Vercel Blob (no 4.5 MB function limit),
+ * then asks /api/convert to convert it and reads the streamed progress.
+ */
+export async function convertWithBlob(
+  baseUrl: string,
+  config: ServerConfig,
+  file: File,
+  request: SizeRequest,
+  options: BlobConvertOptions = {},
+): Promise<Job> {
+  const upload = config.upload ?? { handleUploadUrl: "/api/upload", access: "public" as const, prefix: "sendable/uploads" };
+  const { upload: uploadToBlob } = await import("@vercel/blob/client");
+
+  let blobUrl: string;
+  try {
+    const blob = await uploadToBlob(`${upload.prefix}/${randomId()}/${blobFileName(file.name)}`, file, {
+      access: upload.access,
+      handleUploadUrl: apiUrl(baseUrl, upload.handleUploadUrl),
+      headers: headers(),
+      contentType: guessContentType(file),
+      multipart: file.size > 20 * 1024 * 1024,
+      abortSignal: options.signal,
+      onUploadProgress: ({ loaded, total }) => {
+        if (total > 0) options.onUploadProgress?.(loaded / total);
+      },
+    });
+    blobUrl = blob.url;
+  } catch (error) {
+    if (options.signal?.aborted) throw new ConvertError("cancelled", "Upload cancelled.", 0);
+    const message = (error as Error)?.message ?? "";
+    throw new ConvertError(
+      "uploadFailed",
+      /too large|maximum size/i.test(message)
+        ? `That video is over the ${config.limits.maxUploadMB} MB limit. Try a shorter clip.`
+        : /content type/i.test(message)
+          ? "That doesn't look like a video. Please pick a MOV or MP4 from your gallery."
+          : "The upload didn't finish. Check your connection and try again.",
+      0,
+    );
+  }
+  options.onUploadProgress?.(1);
+
+  const body: Record<string, string | number> = { url: blobUrl, name: file.name };
+  if ("preset" in request) body.preset = request.preset;
+  else {
+    body.width = request.width;
+    body.height = request.height;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(baseUrl, "/api/convert"), {
+      method: "POST",
+      headers: { ...headers(), "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+  } catch (error) {
+    if ((error as Error)?.name === "AbortError") throw new ConvertError("cancelled", "Cancelled.", 0);
+    throw new ConvertError("offline", "Couldn't reach the server to convert the video.", 0);
+  }
+  if (!response.ok || !response.body) throw await parseError(response, "The conversion couldn't start.");
+
+  const now = Date.now();
+  const label =
+    "preset" in request
+      ? (config.presets.find((p) => p.key === request.preset)?.label ?? request.preset)
+      : `${request.width} × ${request.height}`;
+  let job: Job = {
+    id: "pending",
+    state: "converting",
+    progress: 0,
+    createdAt: now,
+    updatedAt: now,
+    source: { name: file.name, bytes: file.size },
+    choice:
+      "preset" in request
+        ? { kind: "preset", key: request.preset, label }
+        : { kind: "custom", label, width: request.width, height: request.height },
+  };
+  options.onUpdate?.(job);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (value) buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = done ? "" : (lines.pop() ?? "");
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let event: BlobEvent;
+        try {
+          event = JSON.parse(line) as BlobEvent;
+        } catch {
+          continue;
+        }
+        if (event.type === "source") job = { ...job, source: event.source, updatedAt: Date.now() };
+        else if (event.type === "progress") job = { ...job, progress: event.progress, updatedAt: Date.now() };
+        else if (event.type === "status" && event.state === "saving") job = { ...job, progress: 1, updatedAt: Date.now() };
+        else if (event.type === "done") {
+          options.onUpdate?.(event.job);
+          return event.job;
+        } else if (event.type === "error") {
+          if (event.error.code === "cancelled") throw new ConvertError("cancelled", event.error.message, 0);
+          return { ...job, state: "error", progress: 0, error: event.error, updatedAt: Date.now() };
+        }
+        options.onUpdate?.(job);
+      }
+      if (done) break;
+    }
+  } catch (error) {
+    if (error instanceof ConvertError) throw error;
+    if ((error as Error)?.name === "AbortError" || options.signal?.aborted) {
+      throw new ConvertError("cancelled", "Cancelled.", 0);
+    }
+    throw new ConvertError("offline", "The connection dropped while converting. Please try again.", 0);
+  }
+  // The stream ended without a result: most likely the function hit its time limit.
+  const minutes = config.limits.maxSeconds ? Math.round(config.limits.maxSeconds / 60) : 5;
+  return {
+    ...job,
+    state: "error",
+    progress: 0,
+    error: {
+      code: "tooLong",
+      message: `The server stopped before finishing (it allows about ${minutes} min). Try Smaller (480p) or a shorter clip.`,
+    },
+  };
 }
 
 /* ---------- small formatting helpers shared with the bot's own copy ---------- */
