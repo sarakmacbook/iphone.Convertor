@@ -135,3 +135,56 @@ export function loadConfig(): Config {
     webApiKey: process.env.WEB_API_KEY?.trim() || undefined,
   };
 }
+
+export type Mp4BotConfig = {
+  token: string;
+  apiRoot: string;
+  /** True when TELEGRAM_API_ROOT points at a self-hosted Bot API server. */
+  localApi: boolean;
+  /** Largest video the MP4 bot will download, in MB. */
+  maxUploadMB: number;
+  /** Largest MP4 the MP4 bot will send back, in MB. */
+  maxOutputMB: number;
+  maxConcurrentJobs: number;
+  ffmpegPath?: string;
+};
+
+/**
+ * Settings for the MP4 converter bot (src/mp4-index.ts). It has its own token,
+ * so it can run next to the Sendable bot. Shares TELEGRAM_API_ROOT, FFMPEG_PATH
+ * and the Telegram size limits with the main bot.
+ */
+export function loadMp4BotConfig(): Mp4BotConfig {
+  const token = process.env.MP4_BOT_TOKEN?.trim() ?? "";
+  if (!token) {
+    throw new Error(
+      "MP4_BOT_TOKEN is missing. Create a second bot with @BotFather (/newbot) and set its token in bot/.env as MP4_BOT_TOKEN.",
+    );
+  }
+  if (!/^\d+:[\w-]{30,}$/.test(token)) {
+    throw new Error("MP4_BOT_TOKEN doesn't look like a token from @BotFather (expected 123456:ABC...).");
+  }
+
+  const apiRoot = (process.env.TELEGRAM_API_ROOT?.trim() || DEFAULT_API_ROOT).replace(/\/+$/, "");
+  const localApi = apiRoot !== DEFAULT_API_ROOT;
+  const downloadCap = localApi ? 2000 : 20;
+  const uploadCap = localApi ? 2000 : 50;
+
+  const maxUploadMB = readNumber("MP4_MAX_UPLOAD_MB", downloadCap, 1, 2000);
+  if (maxUploadMB > downloadCap) {
+    throw new Error(
+      `MP4_MAX_UPLOAD_MB is ${maxUploadMB}, but Telegram's hosted Bot API only lets bots download files up to ${downloadCap} MB. ` +
+        "Lower it, or run your own Bot API server and set TELEGRAM_API_ROOT.",
+    );
+  }
+
+  return {
+    token,
+    apiRoot,
+    localApi,
+    maxUploadMB,
+    maxOutputMB: uploadCap,
+    maxConcurrentJobs: readNumber("MP4_MAX_CONCURRENT_JOBS", 2, 1, 32),
+    ffmpegPath: process.env.FFMPEG_PATH?.trim() || undefined,
+  };
+}
