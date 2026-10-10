@@ -3,6 +3,8 @@
  * anywhere. See bot/.env.example for the full list.
  */
 
+import { normalizeArchiveChatId } from "./archive.js";
+
 const DEFAULT_API_ROOT = "https://api.telegram.org";
 
 function readNumber(name: string, fallback: number, min: number, max: number): number {
@@ -44,6 +46,10 @@ export type Config = {
   loginMaxAgeSeconds: number;
   /** Send a "you signed in on the website" message in Telegram after a verified sign-in. */
   loginGreeting: boolean;
+  /** Optional Telegram channel where completed, smaller copies are kept. */
+  archiveChatId?: string;
+  /** Require an explicit opt-in before writing to a public archive channel. */
+  archiveAllowPublic: boolean;
 };
 
 export function loadConfig(): Config {
@@ -104,5 +110,7 @@ export function loadConfig(): Config {
     corsOrigin,
     loginMaxAgeSeconds: readNumber("LOGIN_MAX_AGE_SECONDS", 86400, 60, 604800),
     loginGreeting: readBoolean("LOGIN_GREETING", true),
+    archiveChatId: normalizeArchiveChatId(process.env.TELEGRAM_ARCHIVE_CHAT_ID),
+    archiveAllowPublic: readBoolean("TELEGRAM_ARCHIVE_ALLOW_PUBLIC", false),
   };
 }

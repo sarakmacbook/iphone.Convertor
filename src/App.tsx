@@ -55,6 +55,12 @@ const samples: Sample[] = [
 
 const presets: SizeOption[] = [
   {
+    key: "keep",
+    label: "High quality (same dimensions)",
+    detail: "Keeps the original resolution and prioritizes detail; savings vary.",
+    pixels: SOURCE_PIXELS,
+  },
+  {
     key: "balanced",
     label: "Recommended (720p)",
     detail: "A good place to start for everyday sharing.",
@@ -65,12 +71,6 @@ const presets: SizeOption[] = [
     label: "Smaller (480p)",
     detail: "More reduction; fine details may look softer.",
     pixels: 854 * 480,
-  },
-  {
-    key: "keep",
-    label: "Keep dimensions",
-    detail: "Try to reduce the file without changing picture size.",
-    pixels: SOURCE_PIXELS,
   },
 ];
 
@@ -89,7 +89,7 @@ const flowSteps = [
   {
     number: "02",
     title: "Choose a size",
-    copy: "Offer a recommended setting, a smaller option, the original dimensions, and an optional custom size.",
+    copy: "Offer a high-quality, same-dimension option first, plus smaller resolutions and an optional custom size.",
   },
   {
     number: "03",
@@ -102,16 +102,16 @@ const messageRows = [
   {
     label: "WELCOME",
     title: "Set expectations up front",
-    copy: "Hi, I'm Sendable. Send an iPhone video and I'll make a smaller copy for you to review. Videos up to {limit} work best. Making a file smaller can soften fine detail, and your original is never changed.",
+    copy: "Hi, I'm Sendable. Send an iPhone video and I'll try to make a smaller copy for you to review. Videos up to {limit} work best. Re-encoding can change detail slightly, and some videos cannot be reduced without a quality trade-off. Your original is never changed.",
   },
   {
     label: "AFTER UPLOAD",
     title: "Offer familiar choices",
     copy: "Got it: {filename} ({size}, {length}). What matters most to you? Pick a size below. You can review the result before downloading.",
     options: [
+      ["High quality (same dimensions)", "Keeps the original resolution and prioritizes detail; savings vary."],
       ["Recommended (720p)", "A good place to start for everyday sharing."],
       ["Smaller (480p)", "More reduction; fine details may look softer."],
-      ["Keep dimensions", "Try to reduce the file without changing picture size."],
       ["Custom dimensions", "Enter a width and height in pixels."],
     ],
   },
@@ -123,7 +123,7 @@ const messageRows = [
   {
     label: "PREVIEW",
     title: "Let the user decide",
-    copy: "Your preview is ready. Watch it and check the file size before downloading. Some fine detail may look softer. Download this version, try another size, or send a different video.",
+    copy: "Your preview is ready. Watch it and check the actual file size before downloading. Re-encoding can change detail slightly; a high-quality setting does not guarantee identical quality or a smaller file. Download this version, try another size, or send a different video.",
   },
   {
     label: "SAVE",
@@ -133,7 +133,7 @@ const messageRows = [
   {
     label: "HELP",
     title: "One place to look things up",
-    copy: "I make a smaller copy of a video you send. Send a video, pick a size, then preview it before downloading. Videos up to {limit}, MOV or MP4 only. Commands: /help, /cancel.",
+    copy: "I make a copy of a video you send. Choose high quality at the original dimensions or a smaller resolution, then preview before downloading. Re-encoding can change detail slightly and may not reduce every file. Videos up to {limit}, MOV or MP4 only. Commands: /help, /cancel.",
   },
 ];
 
@@ -149,6 +149,10 @@ const recoveryRows = [
   {
     label: "Upload stopped",
     copy: "The upload didn't finish. Check your connection and send the video again.",
+  },
+  {
+    label: "No size savings",
+    copy: "This setting didn't make the file smaller, so I didn't send a larger copy. Your original is unchanged. Try 720p or 480p if you need more reduction.",
   },
   {
     label: "Preview failed",
@@ -344,7 +348,7 @@ function SizeEstimator() {
         <div className="segmented" role="group" aria-label="Target size">
           {(
             [
-              ["keep", "Keep size"],
+              ["keep", "High quality"],
               ["720", "720p"],
               ["480", "480p"],
             ] as const
@@ -374,11 +378,11 @@ function SizeEstimator() {
           <span className="est-track">
             <span className="est-fill est-new" style={{ width: `${(estimate / widest) * 100}%` }} />
           </span>
-          <strong>~{formatMB(estimate)}</strong>
+          <strong>{target === "keep" ? "Varies" : `~${formatMB(estimate)}`}</strong>
         </div>
       </div>
       <p className="estimator-note">
-        The bot only ever shows the real size after it finishes a preview.
+        High-quality re-encoding may not shrink an iPhone video that is already efficiently compressed. The bot shows the real size after each preview.
       </p>
     </div>
   );
@@ -406,7 +410,7 @@ function App() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const copyTimer = useRef(0);
 
-  const welcomeText = `Hi, I'm Sendable. Send an iPhone video and I'll make a smaller copy for you to review. Videos up to ${maxUploadMB} MB work best. Making a file smaller can soften fine detail, and your original is never changed.`;
+  const welcomeText = `Hi, I'm Sendable. Send an iPhone video and I'll try to make a smaller copy for you to review. Videos up to ${maxUploadMB} MB work best. Re-encoding can change detail slightly, and some videos cannot be reduced without a quality trade-off. Your original is never changed.`;
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => [
     { id: 1, role: "bot", text: welcomeText, time: formatTime() },
@@ -448,7 +452,7 @@ function App() {
   const finishPreview = useCallback(() => {
     addMessage(
       "bot",
-      "Your preview is ready. Watch it and check the file size before downloading. Some fine detail may look softer. Your original stays unchanged.",
+      "Your preview is ready. Watch it and check the actual file size before downloading. Re-encoding can change detail slightly, even at high quality. Your original stays unchanged.",
     );
     setStage("preview");
   }, [addMessage]);
@@ -544,7 +548,7 @@ function App() {
     addMessage("user", label);
     addMessage(
       "bot",
-      `I'll make a copy using ${label}. The final size depends on the video, so you'll see the real size before you download. Your original stays unchanged. Create a preview first?`,
+      `I'll make a copy using ${label}. Re-encoding can change detail slightly, and this setting may not make every file smaller. You'll see the real size before downloading. Your original stays unchanged. Create a preview first?`,
     );
     setStage("confirm");
   };
@@ -617,7 +621,7 @@ function App() {
     addMessage("user", "/help");
     addMessage(
       "bot",
-      `I make a smaller copy of a video you send. Send a video, pick a size, then preview it before downloading. Videos up to ${maxUploadMB} MB, MOV or MP4 only. Commands: /help, /cancel. Your original is never changed.`,
+      `I make a copy of a video you send. Choose high quality at the original dimensions or a smaller resolution, then preview before downloading. Re-encoding can change detail slightly and may not reduce every file. Videos up to ${maxUploadMB} MB, MOV or MP4 only. Commands: /help, /cancel. Your original is never changed.`,
     );
   };
 
@@ -660,7 +664,9 @@ function App() {
     : presets;
   const smallerSample = samples.find((sample) => sample.sizeMB <= maxUploadMB);
   const estimatedMB =
-    job && activeSample ? estimateSizeMB(activeSample.sizeMB, job.pixels) : 0;
+    job && activeSample && job.label !== presets[0].label
+      ? estimateSizeMB(activeSample.sizeMB, job.pixels)
+      : null;
   const busy = stage === "uploading" || stage === "processing";
 
   const navLinks = [
@@ -1073,7 +1079,7 @@ function App() {
                       </span>
                       <div>
                         <span>Estimated</span>
-                        <strong>~{formatMB(estimatedMB)}</strong>
+                        <strong>{estimatedMB === null ? "Varies" : `~${formatMB(estimatedMB)}`}</strong>
                       </div>
                     </div>
                     <p className="example-note">

@@ -53,5 +53,11 @@ cp .env.example .env   # paste the token from @BotFather
 npm install && npm run build && npm start
 ```
 
+Optional channel-backed archive: create a private Telegram channel, add the bot as an admin allowed to
+post, and set `TELEGRAM_ARCHIVE_CHAT_ID=-100...` in the bot's environment. The bot saves only
+successfully reduced outputs there and tells users before conversion. Channel copies remain until an
+admin deletes them; a channel is a media archive, not a relational database. Public archives are
+blocked unless `TELEGRAM_ARCHIVE_ALLOW_PUBLIC=true` is explicitly set.
+
 The bot server also hosts `POST /telegram/login` (website sign-in verification) and `GET /health`.
 See [`bot/README.md`](bot/README.md) for Docker, webhook mode, sign-in, limits and settings.

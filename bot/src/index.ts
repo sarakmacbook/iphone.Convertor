@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { webhookCallback } from "grammy";
+import { validateArchiveTarget } from "./archive.js";
 import { handleTelegramLoginRequest } from "./auth.js";
 import { createBot, registerCommands } from "./bot.js";
 import { loadConfig } from "./config.js";
@@ -14,6 +15,13 @@ async function main() {
   const { bot, stop } = createBot(config, ffmpeg);
   await bot.init();
   const username = bot.botInfo.username;
+  if (config.archiveChatId) {
+    const archiveChat = await bot.api.getChat(config.archiveChatId);
+    const archiveMember = await bot.api.getChatMember(config.archiveChatId, bot.botInfo.id);
+    validateArchiveTarget(archiveChat, archiveMember, config.archiveAllowPublic);
+    const visibility = archiveChat.username ? `public @${archiveChat.username}` : "private channel";
+    console.log(`Channel archive enabled: ${archiveChat.title ?? config.archiveChatId} (${visibility})`);
+  }
   console.log(`Connected to Telegram as @${username} (https://t.me/${username})`);
   console.log(
     `Limits: ${config.maxUploadMB} MB in, ${config.maxOutputMB} MB out, ${config.maxDimension}px custom, ` +
