@@ -5,6 +5,9 @@ import {
   useState,
   type FormEvent,
 } from "react";
+import ConnectSection from "./ConnectSection";
+import { ArrowIcon, CheckIcon, CopyIcon, TelegramIcon } from "./icons";
+import { botShareUrl, botUrl, useBotUsername } from "./telegram";
 
 type Stage =
   | "welcome"
@@ -44,9 +47,6 @@ type SizeOption = {
 
 const SOURCE_PIXELS = 1920 * 1080;
 const MAX_DIMENSION = 3840;
-const TELEGRAM_BOT_URL = "https://t.me/SendableBot";
-const TELEGRAM_SHARE_URL =
-  "https://t.me/share/url?url=https%3A%2F%2Ft.me%2FSendableBot&text=Sendable%20%E2%80%94%20smaller%20iPhone%20videos%20in%20Telegram";
 
 const samples: Sample[] = [
   { key: "walk", name: "Weekend_walk.mov", sizeMB: 86, duration: "0:47" },
@@ -195,30 +195,6 @@ function BrandMark() {
   );
 }
 
-function ArrowIcon({ diagonal = false }: { diagonal?: boolean }) {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none">
-      {diagonal ? (
-        <path
-          d="M5 15 15 5M7 5h8v8"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ) : (
-        <path
-          d="M3.5 10h12m-5-5 5 5-5 5"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      )}
-    </svg>
-  );
-}
-
 function VideoIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
@@ -257,20 +233,6 @@ function DownloadIcon() {
   );
 }
 
-function CopyIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none">
-      <rect x="7" y="7" width="10" height="10" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M13 5.5A2.5 2.5 0 0 0 10.5 3H5.5A2.5 2.5 0 0 0 3 5.5v5A2.5 2.5 0 0 0 5.5 13"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
 function MenuIcon({ open }: { open: boolean }) {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" fill="none">
@@ -289,26 +251,6 @@ function MenuIcon({ open }: { open: boolean }) {
           strokeLinecap="round"
         />
       )}
-    </svg>
-  );
-}
-
-function TelegramIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
-      <circle cx="12" cy="12" r="10" fill="currentColor" />
-      <path
-        d="M7.4 12.2 16.2 8.4c.4-.16.76.1.62.7l-1.5 7.05c-.1.48-.4.6-.82.37l-2.26-1.67-1.09 1.05c-.12.12-.22.22-.45.22l.16-2.28 4.16-3.76c.18-.16-.04-.25-.28-.1L9.1 13.7l-2.2-.69c-.48-.15-.49-.48.1-.81Z"
-        fill="#fff"
-      />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none">
-      <path d="m4.5 10.5 3.5 3.5 7.5-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -443,6 +385,9 @@ function SizeEstimator() {
 }
 
 function App() {
+  const bot = useBotUsername();
+  const telegramUrl = botUrl(bot.username);
+  const shareUrl = botShareUrl(bot.username);
   const [stage, setStage] = useState<Stage>("welcome");
   const [maxUploadMB, setMaxUploadMB] = useState(100);
   const [allowCustom, setAllowCustom] = useState(true);
@@ -555,7 +500,7 @@ function App() {
   useEffect(() => () => window.clearTimeout(copyTimer.current), []);
 
   useEffect(() => {
-    const ids = ["demo", "flow", "messages", "guardrails"];
+    const ids = ["demo", "flow", "messages", "guardrails", "connect"];
     const nodes = ids
       .map((id) => document.getElementById(id))
       .filter((node): node is HTMLElement => Boolean(node));
@@ -722,6 +667,7 @@ function App() {
     { href: "#flow", id: "flow", label: "The flow" },
     { href: "#messages", id: "messages", label: "Bot messages" },
     { href: "#guardrails", id: "guardrails", label: "Limits & help" },
+    { href: "#connect", id: "connect", label: "Connect" },
   ];
 
   return (
@@ -749,7 +695,7 @@ function App() {
               {link.label}
             </a>
           ))}
-          <a className="nav-telegram" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" onClick={closeNav}>
+          <a className="nav-telegram" href={telegramUrl} target="_blank" rel="noreferrer" onClick={closeNav}>
             <TelegramIcon />
             Open in Telegram
           </a>
@@ -775,7 +721,7 @@ function App() {
               {link.label}
             </a>
           ))}
-          <a href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" onClick={closeNav}>
+          <a href={telegramUrl} target="_blank" rel="noreferrer" onClick={closeNav}>
             Open in Telegram
           </a>
         </div>
@@ -810,7 +756,7 @@ function App() {
               one simple choice at a time. No editing vocabulary required.
             </p>
             <div className="hero-actions">
-              <a className="button-primary" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer">
+              <a className="button-primary" href={telegramUrl} target="_blank" rel="noreferrer">
                 <TelegramIcon />
                 Open in Telegram
               </a>
@@ -818,7 +764,10 @@ function App() {
                 Try the flow here <ArrowIcon />
               </a>
             </div>
-            <p className="hero-actions-note">Made for people who just want to share. Jump with the menu, or the dots on the right.</p>
+            <p className="hero-actions-note">
+              Opens <strong>@{bot.username}</strong> in Telegram. Running your own bot?{" "}
+              <a href="#connect">Connect it here</a>.
+            </p>
             <div className="hero-promise">
               <span className="promise-check" aria-hidden="true">
                 <svg viewBox="0 0 12 12" fill="none">
@@ -1178,7 +1127,11 @@ function App() {
               </div>
             </div>
             <p className="demo-caption">
-              A clickable message-flow prototype, not a working Telegram bot.
+              A clickable sample of the flow. The real bot runs in Telegram:{" "}
+              <a href={telegramUrl} target="_blank" rel="noreferrer">
+                open @{bot.username}
+              </a>{" "}
+              or <a href="#connect">connect your own</a>.
             </p>
           </section>
         </section>
@@ -1320,6 +1273,12 @@ function App() {
             </div>
           </div>
         </section>
+        <ConnectSection
+          username={bot.username}
+          isDefault={bot.isDefault}
+          onConnect={bot.setUsername}
+          onReset={bot.resetUsername}
+        />
       </main>
 
       <footer className="page-footer page-width">
@@ -1331,11 +1290,11 @@ function App() {
         </a>
         <p>A simple bot flow for a real-world sharing problem.</p>
         <div className="footer-links">
-          <a href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" className="footer-telegram">
+          <a href={telegramUrl} target="_blank" rel="noreferrer" className="footer-telegram">
             <TelegramIcon />
             Open bot
           </a>
-          <a href={TELEGRAM_SHARE_URL} target="_blank" rel="noreferrer">
+          <a href={shareUrl} target="_blank" rel="noreferrer">
             Share in Telegram
           </a>
           <a href="#top" className="back-top">
