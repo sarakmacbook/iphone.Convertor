@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { CancelledError, resizeVideo, resolveFfmpeg } from "./ffmpeg.js";
-import { findPreset, formatDuration, formatMB, parseCustomSize, presetChoice } from "./sizes.js";
+import { buildArgs, CancelledError, resizeVideo, resolveFfmpeg } from "./ffmpeg.js";
+import { crfFor, findPreset, formatDuration, formatMB, parseCustomSize, presetChoice, scaleFilter } from "./sizes.js";
 
 test("parseCustomSize accepts common formats", () => {
   for (const input of ["720 x 1280", "720x1280", "720 X 1280", "720*1280", "720, 1280", "720 1280", "720×1280px"]) {
@@ -31,6 +31,17 @@ test("formatting helpers", () => {
   assert.equal(formatDuration(47), "0:47");
   assert.equal(formatDuration(3725), "1:02:05");
   assert.equal(formatDuration(undefined), undefined);
+});
+
+test("high-quality preset keeps dimensions and prioritizes visual quality", () => {
+  const preset = findPreset("keep");
+  assert.ok(preset);
+  const choice = presetChoice(preset);
+  assert.equal(preset.shortSide, null);
+  assert.equal(crfFor(choice), 18);
+  assert.match(scaleFilter(choice), /trunc\(iw\/2\)\*2/);
+  const args = buildArgs("input.mov", "output.mp4", choice);
+  assert.equal(args[args.indexOf("-crf") + 1], "18");
 });
 
 const ffmpeg = process.env.FFMPEG_PATH || resolveFfmpeg();

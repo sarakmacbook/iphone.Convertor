@@ -2,36 +2,42 @@
  * Everything the bot says, matching the message guide on the Sendable website.
  */
 
-const welcomeText = (limitMB: number) =>
-  `Hi, I'm Sendable. Send an iPhone video and I'll make a smaller copy for you to review. ` +
-  `Videos up to ${limitMB} MB work best. Making a file smaller can soften fine detail, and your original is never changed.\n\n` +
-  `Tip: send it as a file (📎 → File) to keep the full quality of your original.`;
+const archiveDisclosure =
+  "When you create a preview, the finished copy will also be saved in the bot owner's Telegram archive channel. Anyone with access to that channel—including the public if it is public—may view it.";
+
+const welcomeText = (limitMB: number, archiveEnabled = false) =>
+  `Hi, I'm Sendable. Send an iPhone video and I'll try to make a smaller copy for you to review. ` +
+  `Videos up to ${limitMB} MB work best. Re-encoding can change detail slightly, and not every video can be made smaller without a quality trade-off. Your original is never changed.\n\n` +
+  `Tip: send it as a file (📎 → File) to keep the full quality of your original.` +
+  (archiveEnabled ? `\n\n${archiveDisclosure}` : "");
 
 export const messages = {
   welcome: welcomeText,
 
   /** Shown when someone opens the bot from the website after signing in there (start payload "web-<id>"). */
-  welcomeFromSite: (limitMB: number) =>
+  welcomeFromSite: (limitMB: number, archiveEnabled = false) =>
     `Connected! You signed in on the Sendable website, and this chat is where your resized videos arrive.\n\n` +
-    welcomeText(limitMB),
+    welcomeText(limitMB, archiveEnabled),
 
   /** Sent by the login endpoint right after a website sign-in verifies. */
   siteLoginGreeting: (firstName: string) =>
     `Hi ${firstName}! You just signed in on the Sendable website. ✅\n\n` +
     `You're connected: send a video here whenever you want a smaller copy to preview and download.`,
 
-  help: (limitMB: number, allowCustom: boolean) =>
-    `I make a smaller copy of a video you send.\n\n` +
+  help: (limitMB: number, allowCustom: boolean, archiveEnabled = false) =>
+    `I make a copy of a video you send.\n\n` +
     `1. Send a video (MOV or MP4, up to ${limitMB} MB).\n` +
-    `2. Pick a size: Recommended (720p), Smaller (480p), Keep dimensions` +
+    `2. Choose High quality (same dimensions), Recommended (720p), or Smaller (480p)` +
     `${allowCustom ? ", or your own width and height" : ""}.\n` +
     `3. Preview it and check the real file size before downloading.\n\n` +
-    `Commands:\n/help: show this message\n/cancel: stop the current resize\n\n` +
-    `Your original is never changed.`,
+    `Re-encoding can change detail slightly, and a high-quality conversion may not reduce every file. Your original is never changed.\n\n` +
+    (archiveEnabled ? `${archiveDisclosure}\n\n` : "") +
+    `Commands:\n/help: show this message\n/cancel: stop the current resize`,
 
-  gotIt: (name: string, size: string, length?: string) =>
+  gotIt: (name: string, size: string, length?: string, archiveEnabled = false) =>
     `Got it: ${name} (${size}${length ? `, ${length}` : ""}). What matters most to you? ` +
-    `Pick a size below. You can review the result before downloading.`,
+    `Pick a size below. You can review the result before downloading.` +
+    (archiveEnabled ? `\n\n${archiveDisclosure}` : ""),
 
   tooLarge: (name: string, size: string, limitMB: number) =>
     `${name} is ${size}, which is over this bot's current ${limitMB} MB limit. ` +
@@ -48,8 +54,8 @@ export const messages = {
     `Those dimensions are above this bot's ${max} pixel limit. Choose a smaller width and height.`,
 
   confirm: (label: string) =>
-    `I'll make a copy using ${label}. The final size depends on the video, so you'll see the real size before you download. ` +
-    `Your original stays unchanged. Create a preview first?`,
+    `I'll make a copy using ${label}. Re-encoding can change detail slightly, and this setting may not make every file smaller. ` +
+    `You'll see the real size before downloading. Your original stays unchanged. Create a preview first?`,
 
   queued: "You're in line. I'll start your preview as soon as possible.",
 
@@ -57,12 +63,19 @@ export const messages = {
     `Preparing your preview${percent !== undefined ? ` (${percent}%)` : ""}…\n` +
     `Longer videos take longer. You can keep chatting in the meantime.`,
 
-  previewReady: (original: string, resized: string, label: string, smaller: boolean) =>
+  previewReady: (
+    original: string,
+    resized: string,
+    label: string,
+    smaller: boolean,
+    archived = false,
+  ) =>
     `Your preview is ready.\n\n` +
     `${label}\nOriginal: ${original}\nNew copy: ${resized}\n\n` +
     (smaller
-      ? "Watch it and check the size before downloading. Some fine detail may look softer."
-      : "This setting didn't make the file smaller. Try a smaller size instead."),
+      ? "Watch it and check the size before downloading. Re-encoding can change detail slightly."
+      : "This setting didn't make the file smaller. Try a smaller size instead.") +
+    (archived ? "\n\nA copy was saved to the bot owner's Telegram archive channel." : ""),
 
   saveHint:
     "Here's the file. Tap the download icon on it to save it, or Share to send it. Your original is still unchanged.",
@@ -80,6 +93,10 @@ export const messages = {
   previewFailed: "I couldn't make a preview this time. Your original is unchanged. Please try once more.",
   outputTooLarge: (size: string, limitMB: number) =>
     `The new copy is ${size}, which is over the ${limitMB} MB Telegram lets me send back. Try a smaller size.`,
+  noSizeReduction:
+    "This setting didn't make the file smaller, so I haven't sent or stored a larger copy. Your original is unchanged. Try 720p or 480p if reducing the size matters more.",
+  archiveFailed:
+    "I couldn't save the preview to the configured archive channel, so I haven't sent an unarchived copy. Please try again later or contact the bot owner.",
 } as const;
 
 export const buttons = {

@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { Bot, GrammyError, InlineKeyboard, InputFile, type Context } from "grammy";
+import { formatArchiveCaption } from "./archive.js";
 import type { Config } from "./config.js";
 import { CancelledError, resizeVideo } from "./ffmpeg.js";
 import { buttons, messages } from "./messages.js";
@@ -27,8 +28,11 @@ type VideoInfo = {
 };
 
 type Preview = {
-  dir: string;
-  file: string;
+  /** Present when the preview lives in the optional Telegram channel archive. */
+  archiveMessageId?: number;
+  /** Present only when the preview is held temporarily on local disk. */
+  dir?: string;
+  file?: string;
   fileName: string;
 };
 
@@ -100,9 +104,9 @@ const confirmKeyboard = () =>
 
 const cancelKeyboard = () => new InlineKeyboard().text(buttons.cancel, "cancel");
 
-const previewKeyboard = () =>
+const previewKeyboard = (archiveMessageId?: number) =>
   new InlineKeyboard()
-    .text(buttons.download, "download")
+    .text(buttons.download, archiveMessageId ? `download:${archiveMessageId}` : "download")
     .row()
     .text(buttons.tryAnother, "change")
     .row()
@@ -112,7 +116,11 @@ const retryKeyboard = () =>
   new InlineKeyboard().text(buttons.tryAgain, "go").row().text(buttons.changeSize, "change");
 
 function baseName(name: string) {
-  return name.replace(/\.[^.]+$/, "") || "video";
+  const leaf = name.replace(/\\/g, "/").split("/").pop() ?? "";
+  return leaf
+    .replace(/\.[^.]+$/, "")
+    .replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_")
+    .slice(0, 120) || "video";
 }
 
 async function removeDir(dir?: string) {
@@ -249,24 +257,75 @@ export function createBot(config: Config, ffmpegBinary: string) {
 
       if (controller.signal.aborted) throw new CancelledError();
 
-      const smaller = video.sizeBytes === undefined || outBytes < video.sizeBytes;
-      await bot.api.sendVideo(chatId, new InputFile(output, outputName), {
+      const inputBytes = video.sizeBytes ?? (await stat(input)).size;
+      const smaller = outBytes < inputBytes;
+      if (!smaller) {
+        await setStatus(messages.noSizeReduction, false);
+        await bot.api.sendMessage(chatId, messages.noSizeReduction, {
+          reply_markup: sizeKeyboard(config.allowCustom),
+        });
+        session.choice = undefined;
+        session.stage = "choose";
+        return;
+      }
+
+      if (controller.signal.aborted) throw new CancelledError();
+
+      let archiveMessageId: number | undefined;
+      let outgoingVideo: InputFile | string = new InputFile(output, outputName);
+      if (config.archiveChatId) {
+        try {
+          const archived = await bot.api.sendVideo(
+            config.archiveChatId,
+            new InputFile(output, outputName),
+            {
+              caption: formatArchiveCaption({
+                sourceName: video.fileName,
+                sourceBytes: inputBytes,
+                outputBytes: outBytes,
+                preset: choice.label,
+                width: result.width,
+                height: result.height,
+              }),
+              width: result.width,
+              height: result.height,
+              duration: result.duration ? Math.round(result.duration) : undefined,
+              supports_streaming: true,
+            },
+          );
+          archiveMessageId = archived.message_id;
+          outgoingVideo = archived.video.file_id;
+        } catch (error) {
+          console.error("Could not save converted video to the archive channel:", error);
+          await setStatus(messages.archiveFailed, false);
+          await bot.api.sendMessage(chatId, messages.archiveFailed, {
+            reply_markup: retryKeyboard(),
+          });
+          session.stage = "confirm";
+          return;
+        }
+      }
+
+      await bot.api.sendVideo(chatId, outgoingVideo, {
         caption: messages.previewReady(
-          video.sizeBytes !== undefined ? formatMB(video.sizeBytes) : "unknown",
+          formatMB(inputBytes),
           formatMB(outBytes),
           choice.label,
           smaller,
+          Boolean(archiveMessageId),
         ),
         width: result.width,
         height: result.height,
         duration: result.duration ? Math.round(result.duration) : undefined,
         supports_streaming: true,
-        reply_markup: previewKeyboard(),
+        reply_markup: previewKeyboard(archiveMessageId),
       });
 
       if (statusId) await bot.api.deleteMessage(chatId, statusId).catch(() => undefined);
-      session.preview = { dir: workDir, file: output, fileName: outputName };
-      keepWorkDir = true;
+      session.preview = archiveMessageId
+        ? { archiveMessageId, fileName: outputName }
+        : { dir: workDir, file: output, fileName: outputName };
+      keepWorkDir = !archiveMessageId;
       session.stage = "preview";
     } catch (error) {
       if (error instanceof CancelledError || controller.signal.aborted) {
@@ -303,13 +362,15 @@ export function createBot(config: Config, ffmpegBinary: string) {
     // The website links here with ?start=web-<telegram id> after someone signs in there.
     const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
     if (/^web-\d{1,18}$/.test(payload)) {
-      await ctx.reply(messages.welcomeFromSite(config.maxUploadMB));
+      await ctx.reply(messages.welcomeFromSite(config.maxUploadMB, Boolean(config.archiveChatId)));
       return;
     }
-    await ctx.reply(messages.welcome(config.maxUploadMB));
+    await ctx.reply(messages.welcome(config.maxUploadMB, Boolean(config.archiveChatId)));
   });
 
-  bot.command("help", (ctx) => ctx.reply(messages.help(config.maxUploadMB, config.allowCustom)));
+  bot.command("help", (ctx) =>
+    ctx.reply(messages.help(config.maxUploadMB, config.allowCustom, Boolean(config.archiveChatId))),
+  );
 
   bot.command("cancel", async (ctx) => {
     const session = getSession(ctx.chat.id);
@@ -348,7 +409,7 @@ export function createBot(config: Config, ffmpegBinary: string) {
     session.choice = undefined;
     session.stage = "choose";
     await ctx.reply(
-      `${messages.gotIt(video.fileName, size, formatDuration(video.duration))}\n\n${sizeDetails(config.allowCustom)}`,
+      `${messages.gotIt(video.fileName, size, formatDuration(video.duration), Boolean(config.archiveChatId))}\n\n${sizeDetails(config.allowCustom)}`,
       { reply_markup: sizeKeyboard(config.allowCustom) },
     );
   };
@@ -464,10 +525,29 @@ export function createBot(config: Config, ffmpegBinary: string) {
     await ctx.reply(messages.sendAnother);
   });
 
-  bot.callbackQuery("download", async (ctx) => {
+  bot.callbackQuery(/^download(?::(\d+))?$/, async (ctx) => {
+    const archiveMessageId = ctx.match[1] ? Number(ctx.match[1]) : undefined;
+    if (archiveMessageId !== undefined) {
+      if (!config.archiveChatId || !Number.isSafeInteger(archiveMessageId) || archiveMessageId < 1) {
+        await ctx.answerCallbackQuery();
+        await ctx.reply(messages.expired);
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: "Sending the file…" });
+      try {
+        await bot.api.copyMessage(ctx.chat!.id, config.archiveChatId, archiveMessageId, {
+          caption: messages.saveHint,
+        });
+      } catch (error) {
+        console.error("Copying archived video to the user failed:", error);
+        await ctx.reply(messages.previewFailed);
+      }
+      return;
+    }
+
     const session = getSession(ctx.chat!.id);
     const preview = session.preview;
-    if (!preview) {
+    if (!preview?.file) {
       await ctx.answerCallbackQuery();
       await ctx.reply(messages.expired);
       return;
@@ -514,6 +594,6 @@ export async function registerCommands(bot: Bot) {
     { command: "cancel", description: "Stop the current resize" },
   ]);
   await bot.api.setMyShortDescription(
-    "Send an iPhone video and get a smaller copy to preview before you download. Your original is never changed.",
+    "Try a high-quality iPhone video resize. Preview the size before downloading; original stays unchanged.",
   );
 }

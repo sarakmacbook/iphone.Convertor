@@ -1,13 +1,16 @@
 # Sendable bot
 
-The working Telegram bot behind the Sendable website. Someone sends an iPhone video. They choose
-**Recommended (720p)**, **Smaller (480p)**, **Keep dimensions** or **Custom dimensions**. They get a
-preview with the real before-and-after file size, and can then download it as a file. The original
-video is never changed.
+The working Telegram bot behind the Sendable website. Someone sends an iPhone video and chooses
+**High quality (same dimensions)**, **Recommended (720p)**, **Smaller (480p)**, or **Custom dimensions**.
+They get a preview with the real before-and-after file size, and can then download it as a file. The
+original video is never changed.
 
 It's built with [grammY](https://grammy.dev) and uses ffmpeg (H.264 + AAC MP4, `+faststart`) to make
-the copy. Videos are never stretched or upscaled, iPhone rotation is respected, and metadata such as
-GPS location is removed from the copy.
+the copy. The high-quality option keeps the source resolution and uses a quality-biased encode, but
+no re-encode can guarantee an identical picture or a smaller file. If a setting does not reduce the
+file, the bot will not send or archive a larger copy. The 720p/480p options reduce resolution and may
+soften detail. Videos are never stretched or upscaled, iPhone rotation is respected, and metadata such
+as GPS location is removed from the copy.
 
 ## 1. Create your bot
 
@@ -45,6 +48,34 @@ docker run --env-file bot/.env -p 8080:8080 sendable-bot
 ```
 
 The image installs ffmpeg for you.
+
+## Optional: use a Telegram channel as a video archive
+
+The bot can keep each successfully reduced output in your Telegram channel and uses the archived
+message as the persistent download source. This survives bot restarts and leaves a searchable record
+in the video's caption. It archives **only the smaller converted copy**; original uploads and
+conversions that did not reduce the file are not stored there.
+
+1. Create a **private** Telegram channel for the archive.
+2. Add your bot to the channel as an administrator with permission to post messages.
+3. Set `TELEGRAM_ARCHIVE_CHAT_ID` in `bot/.env` (or your host's environment variables) to the
+   channel's numeric ID, usually starting with `-100`:
+
+   ```bash
+   TELEGRAM_ARCHIVE_CHAT_ID=-1001234567890
+   ```
+
+4. Restart the bot. It checks that the destination is a channel and that it can post there. Public
+   channels are rejected by default. Set `TELEGRAM_ARCHIVE_ALLOW_PUBLIC=true` only if you explicitly
+   intend to make archived user videos public.
+
+When archive mode is enabled, the bot tells people before conversion that the finished copy will be
+saved and that anyone with access to the channel may view it. Archive posts remain until a channel
+admin deletes them. Use a private channel with only trusted admins/members. A Telegram channel is an
+append-only media archive, **not** a relational database; it is best suited to storing outputs and
+simple caption metadata, not private user profiles or searchable application records.
+
+Leave `TELEGRAM_ARCHIVE_CHAT_ID` empty to keep the existing temporary-file-only behavior.
 
 ## 3. Connect the website
 
@@ -126,6 +157,8 @@ All settings are environment variables. See [`.env.example`](.env.example).
 | `MAX_CONCURRENT_JOBS` | `2` | Videos converted at the same time; others wait in line |
 | `FFMPEG_PATH` | auto | ffmpeg binary (ffmpeg-static if it installed, otherwise `ffmpeg` on PATH) |
 | `TELEGRAM_API_ROOT` | `https://api.telegram.org` | Point at a self-hosted Bot API server |
+| `TELEGRAM_ARCHIVE_CHAT_ID` | (empty) | Optional channel ID; stores successfully reduced outputs as searchable archive posts |
+| `TELEGRAM_ARCHIVE_ALLOW_PUBLIC` | `false` | Explicitly allow a public archive channel (not recommended) |
 | `WEBHOOK_URL` / `WEBHOOK_PATH` / `WEBHOOK_SECRET` | (empty) | Turn on webhook mode |
 | `PORT` | `8080` | Health check and webhook port |
 | `CORS_ORIGIN` | `*` | Website origins allowed to call `POST /telegram/login` (`*`, or a comma-separated list like `https://a.com,https://b.com`) |
@@ -159,11 +192,17 @@ That's better than failing on someone's upload.
 npm test
 ```
 
-These cover the size parsing and run real conversions with ffmpeg. They check the output dimensions
-for portrait, landscape, custom and no-upscale cases, and that cancelling works.
+These cover the size parsing, archive target checks, and real conversions with ffmpeg. They check
+the output dimensions for portrait, landscape, custom and no-upscale cases, and that cancelling works.
 
 ## Privacy
 
-Videos are downloaded to a temporary folder only while they're being converted. The finished preview
-is kept so the "Download this version" button can send it. It's deleted when the person sends
-another video, picks a new size, or after 6 hours of inactivity. Nothing is written anywhere else.
+By default, videos are downloaded to a temporary folder only while they are being converted. A
+finished preview is kept so the "Download this version" button can send it; it is deleted when the
+person sends another video, picks a new size, or after 6 hours of inactivity. Nothing is written
+anywhere else.
+
+If `TELEGRAM_ARCHIVE_CHAT_ID` is configured, only a smaller completed output is posted to that
+channel. The input and temporary files are still removed as above. The archive copy persists until a
+channel admin deletes it, and is visible to that channel's members/admins (or the public if the
+explicit public-channel override is enabled). The bot displays this before a user creates a preview.

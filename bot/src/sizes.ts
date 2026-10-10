@@ -20,6 +20,13 @@ export type Preset = {
 
 export const PRESETS: Preset[] = [
   {
+    key: "keep",
+    label: "High quality (same dimensions)",
+    detail: "Keeps the original resolution and prioritizes detail; savings vary.",
+    shortSide: null,
+    crf: 18,
+  },
+  {
     key: "balanced",
     label: "Recommended (720p)",
     detail: "A good place to start for everyday sharing.",
@@ -33,16 +40,9 @@ export const PRESETS: Preset[] = [
     shortSide: 480,
     crf: 28,
   },
-  {
-    key: "keep",
-    label: "Keep dimensions",
-    detail: "Try to reduce the file without changing picture size.",
-    shortSide: null,
-    crf: 27,
-  },
 ];
 
-export const CUSTOM_CRF = 26;
+export const CUSTOM_CRF = 18;
 
 export function findPreset(key: string): Preset | undefined {
   return PRESETS.find((preset) => preset.key === key);
