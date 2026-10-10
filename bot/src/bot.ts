@@ -300,6 +300,12 @@ export function createBot(config: Config, ffmpegBinary: string) {
   bot.command("start", async (ctx) => {
     const session = getSession(ctx.chat.id);
     if (!session.job) session.stage = "idle";
+    // The website links here with ?start=web-<telegram id> after someone signs in there.
+    const payload = typeof ctx.match === "string" ? ctx.match.trim() : "";
+    if (/^web-\d{1,18}$/.test(payload)) {
+      await ctx.reply(messages.welcomeFromSite(config.maxUploadMB));
+      return;
+    }
     await ctx.reply(messages.welcome(config.maxUploadMB));
   });
 

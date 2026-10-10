@@ -1,8 +1,12 @@
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import TelegramLogin from "./TelegramLogin";
 import { ArrowIcon, CheckIcon, CopyIcon, TelegramIcon } from "./icons";
 import {
+  DEFAULT_BOT_API_URL,
   DEFAULT_BOT_USERNAME,
+  apiHost,
+  apiUrlError,
   botShareUrl,
   botUrl,
   botUsernameError,
@@ -14,6 +18,11 @@ type Props = {
   isDefault: boolean;
   onConnect: (name: string) => boolean;
   onReset: () => void;
+  /** Base URL of the bot server that verifies sign-ins ("" when unset). */
+  apiUrl: string;
+  isDefaultApi: boolean;
+  onConnectApi: (url: string) => boolean;
+  onResetApi: () => void;
 };
 
 function QrCode({ value, label }: { value: string; label: string }) {
@@ -70,19 +79,44 @@ const setupSteps = [
     code: "cd bot && npm install && npm run build && npm start",
   },
   {
+    title: "Link your domain",
+    body: (
+      <>
+        Needed for the sign-in button: send <code>/setdomain</code> to{" "}
+        <a href="https://t.me/BotFather" target="_blank" rel="noreferrer">
+          @BotFather
+        </a>
+        , pick your bot, and enter the domain this site runs on (like{" "}
+        <code>sendable.vercel.app</code>). Telegram only shows the button on that domain.
+      </>
+    ),
+  },
+  {
     title: "Connect this page",
     body: (
       <>
-        Enter the bot's username here. To make it the default for every visitor, set{" "}
-        <code>VITE_TELEGRAM_BOT_USERNAME</code> when you build the site.
+        Enter the bot's username and its server address here. To make them the default for every
+        visitor, build the site with <code>VITE_TELEGRAM_BOT_USERNAME</code> and{" "}
+        <code>VITE_BOT_API_URL</code>.
       </>
     ),
   },
 ];
 
-function ConnectSection({ username, isDefault, onConnect, onReset }: Props) {
+function ConnectSection({
+  username,
+  isDefault,
+  onConnect,
+  onReset,
+  apiUrl,
+  isDefaultApi,
+  onConnectApi,
+  onResetApi,
+}: Props) {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
+  const [apiDraft, setApiDraft] = useState("");
+  const [apiError, setApiError] = useState("");
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState<string | null>(null);
   const timer = useRef(0);
@@ -131,6 +165,34 @@ function ConnectSection({ username, isDefault, onConnect, onReset }: Props) {
     flash(`Back to the default bot, @${DEFAULT_BOT_USERNAME}.`);
   };
 
+  const submitApi = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const problem = apiUrlError(apiDraft);
+    if (problem) {
+      setApiError(problem);
+      return;
+    }
+    const clean = apiDraft.trim();
+    if (!onConnectApi(clean)) {
+      setApiError("That address couldn't be saved. Check it and try again.");
+      return;
+    }
+    setApiError("");
+    setApiDraft("");
+    flash(`Saved. Sign-ins on this page will be verified by ${apiHost(clean)}.`);
+  };
+
+  const resetApi = () => {
+    onResetApi();
+    setApiError("");
+    setApiDraft("");
+    flash(
+      DEFAULT_BOT_API_URL
+        ? `Back to the default server, ${apiHost(DEFAULT_BOT_API_URL)}.`
+        : "Saved server address removed.",
+    );
+  };
+
   return (
     <section className="connect-section page-width reveal" id="connect" aria-labelledby="connect-title">
       <div className="section-heading">
@@ -138,8 +200,8 @@ function ConnectSection({ username, isDefault, onConnect, onReset }: Props) {
         <div>
           <h2 id="connect-title">Connect to the bot.</h2>
           <p>
-            Open the chat in Telegram, scan it from your phone, or point this page at a bot you run
-            yourself.
+            Open the chat in Telegram, scan it from your phone, point this page at a bot you run
+            yourself — and sign in with Telegram to link your account.
           </p>
         </div>
       </div>
@@ -215,6 +277,68 @@ function ConnectSection({ username, isDefault, onConnect, onReset }: Props) {
               </button>
             )}
           </form>
+
+          <form className="connect-form" onSubmit={submitApi} noValidate>
+            <label htmlFor="bot-api-url">Your bot's server address</label>
+            <div className={`connect-input-row no-prefix${apiError ? " has-error" : ""}`}>
+              <input
+                id="bot-api-url"
+                type="url"
+                inputMode="url"
+                autoComplete="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                placeholder="https://my-bot.example.com"
+                value={apiDraft}
+                onChange={(event) => {
+                  setApiDraft(event.target.value);
+                  if (apiError) setApiError("");
+                }}
+                aria-invalid={Boolean(apiError)}
+                aria-describedby={apiError ? "bot-api-url-error" : "bot-api-url-hint"}
+              />
+              <button type="submit">
+                Save <ArrowIcon />
+              </button>
+            </div>
+            {apiError ? (
+              <p className="form-error" id="bot-api-url-error" role="alert">
+                {apiError}
+              </p>
+            ) : (
+              <p className="connect-hint" id="bot-api-url-hint">
+                {apiUrl ? (
+                  <>
+                    Sign-ins are verified by <strong>{apiHost(apiUrl)}</strong>. The bot answers at{" "}
+                    <code>/telegram/login</code>; its token never reaches this page.
+                  </>
+                ) : (
+                  <>
+                    Needed for “Sign in with Telegram”: the address of the bot server from{" "}
+                    <code>bot/</code>, which verifies each sign-in. Set{" "}
+                    <code>VITE_BOT_API_URL</code> at build time to make it the default.
+                  </>
+                )}
+              </p>
+            )}
+            {!isDefaultApi && (
+              <button className="text-button connect-reset" type="button" onClick={resetApi}>
+                {DEFAULT_BOT_API_URL
+                  ? `Switch back to ${apiHost(DEFAULT_BOT_API_URL)}`
+                  : "Remove the saved address"}
+              </button>
+            )}
+          </form>
+
+          <TelegramLogin
+            botUsername={username}
+            apiUrl={apiUrl}
+            onSignedIn={(signed) =>
+              flash(`Signed in as ${signed.firstName}. You're connected to @${username}.`)
+            }
+            onSignedOut={() => flash("Signed out on this page. Your Telegram account is untouched.")}
+          />
+
           <p className="connect-status" role="status">
             {note}
           </p>

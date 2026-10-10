@@ -2,11 +2,23 @@
  * Everything the bot says, matching the message guide on the Sendable website.
  */
 
+const welcomeText = (limitMB: number) =>
+  `Hi, I'm Sendable. Send an iPhone video and I'll make a smaller copy for you to review. ` +
+  `Videos up to ${limitMB} MB work best. Making a file smaller can soften fine detail, and your original is never changed.\n\n` +
+  `Tip: send it as a file (📎 → File) to keep the full quality of your original.`;
+
 export const messages = {
-  welcome: (limitMB: number) =>
-    `Hi, I'm Sendable. Send an iPhone video and I'll make a smaller copy for you to review. ` +
-    `Videos up to ${limitMB} MB work best. Making a file smaller can soften fine detail, and your original is never changed.\n\n` +
-    `Tip: send it as a file (📎 → File) to keep the full quality of your original.`,
+  welcome: welcomeText,
+
+  /** Shown when someone opens the bot from the website after signing in there (start payload "web-<id>"). */
+  welcomeFromSite: (limitMB: number) =>
+    `Connected! You signed in on the Sendable website, and this chat is where your resized videos arrive.\n\n` +
+    welcomeText(limitMB),
+
+  /** Sent by the login endpoint right after a website sign-in verifies. */
+  siteLoginGreeting: (firstName: string) =>
+    `Hi ${firstName}! You just signed in on the Sendable website. ✅\n\n` +
+    `You're connected: send a video here whenever you want a smaller copy to preview and download.`,
 
   help: (limitMB: number, allowCustom: boolean) =>
     `I make a smaller copy of a video you send.\n\n` +

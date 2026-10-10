@@ -2764,6 +2764,162 @@ input[type="range"]:focus-visible {
   font-size: 11px;
 }
 
+/* ---------------------------------------------------------------
+   Telegram sign-in (Login Widget + signed-in card)
+   --------------------------------------------------------------- */
+
+.connect-input-row.no-prefix input {
+  padding-left: 12px;
+}
+
+.connect-hint code,
+.tg-need-server code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #eef0ea;
+  color: #34493d;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+}
+
+.connect-hint strong {
+  color: #4b5d52;
+  font-weight: 640;
+}
+
+.tg-login {
+  margin-top: 22px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.tg-login-title {
+  margin: 7px 0 6px;
+  color: #31453a;
+  font-size: 13px;
+  font-weight: 640;
+}
+
+.tg-login-copy {
+  margin: 0 0 14px;
+  color: #7a867d;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.tg-widget {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+}
+
+.tg-need-server {
+  padding: 12px 14px;
+  border: 1px dashed #c9d2c7;
+  border-radius: 6px;
+  background: #fbfcf9;
+  color: #7a867d;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.tg-need-server strong {
+  color: #31453a;
+}
+
+.tg-status {
+  min-height: 16px;
+  margin: 10px 0 0;
+  color: #28715f;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tg-error {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+.tg-signed {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 15px;
+  margin-top: 12px;
+  padding: 15px;
+  border: 1px solid #d8e2d6;
+  border-radius: 8px;
+  background: #f6f8f3;
+}
+
+.tg-avatar {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: #e8eee7;
+  object-fit: cover;
+}
+
+.tg-avatar-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--forest);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.tg-signed-info {
+  min-width: 0;
+}
+
+.tg-name {
+  display: block;
+  overflow-wrap: anywhere;
+  color: var(--forest-dark);
+  font-size: 17px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+}
+
+.tg-handle {
+  display: block;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+  color: #66736a;
+  font-size: 12px;
+}
+
+.tg-signed .connect-badge {
+  margin-top: 9px;
+}
+
+.tg-signed .connect-actions {
+  margin-top: 13px;
+}
+
+.tg-signout {
+  align-self: center;
+  margin-left: 2px;
+}
+
+.tg-signed-note {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 12px 0 0;
+  color: #7a867d;
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.tg-signed-note svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  color: #28715f;
+  transform: translateY(2px);
+}
+
 @media (max-width: 900px) {
   .connect-grid {
     grid-template-columns: 1fr;

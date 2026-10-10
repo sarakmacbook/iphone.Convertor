@@ -1,8 +1,10 @@
 import { createServer } from "node:http";
 import { webhookCallback } from "grammy";
+import { handleTelegramLoginRequest } from "./auth.js";
 import { createBot, registerCommands } from "./bot.js";
 import { loadConfig } from "./config.js";
 import { checkFfmpeg, resolveFfmpeg } from "./ffmpeg.js";
+import { messages } from "./messages.js";
 
 async function main() {
   const config = loadConfig();
@@ -26,7 +28,16 @@ async function main() {
     ? webhookCallback(bot, "http", { secretToken: config.webhookSecret })
     : undefined;
 
-  // A small HTTP server: health checks for your host, plus the webhook in webhook mode.
+  // Website sign-in: verify Telegram Login Widget payloads for the site.
+  // See "Website sign-in" in bot/README.md.
+  const loginPath = "/telegram/login";
+  const greetAfterLogin = config.loginGreeting
+    ? (user: { id: number; firstName: string }) =>
+        bot.api.sendMessage(user.id, messages.siteLoginGreeting(user.firstName)).then(() => undefined)
+    : undefined;
+
+  // A small HTTP server: health checks for your host, the login endpoint for the
+  // website, plus the webhook in webhook mode.
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/health")) {
@@ -37,8 +48,18 @@ async function main() {
           bot: username,
           link: `https://t.me/${username}`,
           mode: handleWebhook ? "webhook" : "polling",
+          login: loginPath,
         }),
       );
+      return;
+    }
+    if (url.pathname === loginPath && (req.method === "POST" || req.method === "OPTIONS")) {
+      void handleTelegramLoginRequest(req, res, {
+        token: config.token,
+        corsOrigin: config.corsOrigin,
+        maxAgeSeconds: config.loginMaxAgeSeconds,
+        onVerified: greetAfterLogin,
+      });
       return;
     }
     if (handleWebhook && req.method === "POST" && url.pathname === config.webhookPath) {
