@@ -44,6 +44,9 @@ type SizeOption = {
 
 const SOURCE_PIXELS = 1920 * 1080;
 const MAX_DIMENSION = 3840;
+const TELEGRAM_BOT_URL = "https://t.me/SendableBot";
+const TELEGRAM_SHARE_URL =
+  "https://t.me/share/url?url=https%3A%2F%2Ft.me%2FSendableBot&text=Sendable%20%E2%80%94%20smaller%20iPhone%20videos%20in%20Telegram";
 
 const samples: Sample[] = [
   { key: "walk", name: "Weekend_walk.mov", sizeMB: 86, duration: "0:47" },
@@ -268,6 +271,40 @@ function CopyIcon() {
   );
 }
 
+function MenuIcon({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" fill="none">
+      {open ? (
+        <path
+          d="M5 5 15 15M15 5 5 15"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+      ) : (
+        <path
+          d="M3.5 6h13M3.5 10h13M3.5 14h13"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
+
+function TelegramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none">
+      <circle cx="12" cy="12" r="10" fill="currentColor" />
+      <path
+        d="M7.4 12.2 16.2 8.4c.4-.16.76.1.62.7l-1.5 7.05c-.1.48-.4.6-.82.37l-2.26-1.67-1.09 1.05c-.12.12-.22.22-.45.22l.16-2.28 4.16-3.76c.18-.16-.04-.25-.28-.1L9.1 13.7l-2.2-.69c-.48-.15-.49-.48.1-.81Z"
+        fill="#fff"
+      />
+    </svg>
+  );
+}
+
 function CheckIcon() {
   return (
     <svg viewBox="0 0 20 20" aria-hidden="true" fill="none">
@@ -417,6 +454,8 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [copyNote, setCopyNote] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("demo");
   const messageId = useRef(2);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const copyTimer = useRef(0);
@@ -514,6 +553,27 @@ function App() {
   }, []);
 
   useEffect(() => () => window.clearTimeout(copyTimer.current), []);
+
+  useEffect(() => {
+    const ids = ["demo", "flow", "messages", "guardrails"];
+    const nodes = ids
+      .map((id) => document.getElementById(id))
+      .filter((node): node is HTMLElement => Boolean(node));
+    if (!nodes.length || !("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible?.target.id) setActiveSection(visible.target.id);
+      },
+      { rootMargin: "-28% 0px -55% 0px", threshold: [0.1, 0.35, 0.6] },
+    );
+    nodes.forEach((node) => observer.observe(node));
+    return () => observer.disconnect();
+  }, []);
+
+  const closeNav = () => setNavOpen(false);
 
   const sendSample = (sample: Sample) => {
     addMessage("user", sample.name, "file", `${sample.sizeMB} MB · ${sample.duration}`);
@@ -657,25 +717,83 @@ function App() {
     job && activeSample ? estimateSizeMB(activeSample.sizeMB, job.pixels) : 0;
   const busy = stage === "uploading" || stage === "processing";
 
+  const navLinks = [
+    { href: "#demo", id: "demo", label: "Try it" },
+    { href: "#flow", id: "flow", label: "The flow" },
+    { href: "#messages", id: "messages", label: "Bot messages" },
+    { href: "#guardrails", id: "guardrails", label: "Limits & help" },
+  ];
+
   return (
     <div className="site-shell" id="top">
+      <a className="skip-link" href="#demo">
+        Skip to the conversation
+      </a>
       <header className="topbar">
-        <a className="brand" href="#top" aria-label="Sendable bot blueprint home">
+        <a className="brand" href="#top" aria-label="Sendable bot blueprint home" onClick={closeNav}>
           <span className="brand-mark">
             <BrandMark />
           </span>
           <span>sendable</span>
         </a>
         <span className="topbar-context">TELEGRAM BOT / UX BLUEPRINT</span>
-        <nav className="top-nav" aria-label="Main navigation">
-          <a href="#flow">The flow</a>
-          <a href="#messages">Bot messages</a>
-          <a href="#guardrails">Limits &amp; help</a>
+        <nav className={`top-nav${navOpen ? " is-open" : ""}`} aria-label="Main navigation">
+          {navLinks.map((link) => (
+            <a
+              key={link.id}
+              href={link.href}
+              className={activeSection === link.id ? "is-current" : ""}
+              aria-current={activeSection === link.id ? "location" : undefined}
+              onClick={closeNav}
+            >
+              {link.label}
+            </a>
+          ))}
+          <a className="nav-telegram" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" onClick={closeNav}>
+            <TelegramIcon />
+            Open in Telegram
+          </a>
         </nav>
-        <a className="top-try" href="#demo">
+        <a className="top-try" href="#demo" onClick={closeNav}>
           Try the flow <ArrowIcon diagonal />
         </a>
+        <button
+          className="nav-toggle"
+          type="button"
+          aria-expanded={navOpen}
+          aria-controls="mobile-nav-panel"
+          onClick={() => setNavOpen((open) => !open)}
+        >
+          <MenuIcon open={navOpen} />
+          <span className="sr-only">{navOpen ? "Close menu" : "Open menu"}</span>
+        </button>
       </header>
+      {navOpen && (
+        <div id="mobile-nav-panel" className="mobile-nav" role="dialog" aria-label="Site sections">
+          {navLinks.map((link) => (
+            <a key={link.id} href={link.href} onClick={closeNav}>
+              {link.label}
+            </a>
+          ))}
+          <a href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" onClick={closeNav}>
+            Open in Telegram
+          </a>
+        </div>
+      )}
+      <nav className="section-jump" aria-label="On this page">
+        {navLinks.map((link) => (
+          <a
+            key={link.id}
+            href={link.href}
+            className={activeSection === link.id ? "is-current" : ""}
+            title={link.label}
+            aria-label={link.label}
+            aria-current={activeSection === link.id ? "location" : undefined}
+          >
+            <span />
+          </a>
+        ))}
+      </nav>
 
       <main>
         <section className="hero page-width" aria-labelledby="hero-title">
@@ -692,11 +810,15 @@ function App() {
               one simple choice at a time. No editing vocabulary required.
             </p>
             <div className="hero-actions">
-              <a className="button-primary" href="#flow">
-                Explore the bot flow <ArrowIcon />
+              <a className="button-primary" href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer">
+                <TelegramIcon />
+                Open in Telegram
               </a>
-              <span>Made for people who just want to share.</span>
+              <a className="button-secondary" href="#demo">
+                Try the flow here <ArrowIcon />
+              </a>
             </div>
+            <p className="hero-actions-note">Made for people who just want to share. Jump with the menu, or the dots on the right.</p>
             <div className="hero-promise">
               <span className="promise-check" aria-hidden="true">
                 <svg viewBox="0 0 12 12" fill="none">
@@ -1208,9 +1330,18 @@ function App() {
           <span>sendable</span>
         </a>
         <p>A simple bot flow for a real-world sharing problem.</p>
-        <a href="#top" className="back-top">
-          Back to top <ArrowIcon diagonal />
-        </a>
+        <div className="footer-links">
+          <a href={TELEGRAM_BOT_URL} target="_blank" rel="noreferrer" className="footer-telegram">
+            <TelegramIcon />
+            Open bot
+          </a>
+          <a href={TELEGRAM_SHARE_URL} target="_blank" rel="noreferrer">
+            Share in Telegram
+          </a>
+          <a href="#top" className="back-top">
+            Back to top <ArrowIcon diagonal />
+          </a>
+        </div>
       </footer>
     </div>
   );
