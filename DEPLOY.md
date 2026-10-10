@@ -4,8 +4,8 @@ This repo has two parts:
 
 | Part | Folder | Deploy to |
 | --- | --- | --- |
-| Website (UX blueprint, interactive demo, **Connect** page) | `/` | Vercel or any static host |
-| Working Telegram bot (resizes videos with ffmpeg) | `bot/` | Any host that keeps a process running (VPS, Railway, Fly.io, Render, Docker) |
+| Website (working **Convert here** page, interactive demo, **Connect** page) | `/` | Vercel or any static host |
+| Working Telegram bot + conversion API (ffmpeg) | `bot/` | Any host that keeps a process running (VPS, Railway, Fly.io, Render, Docker) |
 
 ## Website
 
@@ -23,6 +23,21 @@ VITE_TELEGRAM_BOT_USERNAME=MyVideoBot npm run build
 
 On Vercel, add `VITE_TELEGRAM_BOT_USERNAME` under Project → Settings → Environment Variables.
 Visitors can still pick a different bot in the **Connect** section, or open the site with `?bot=MyVideoBot`.
+
+### "Convert here" on the site
+
+The Convert section really converts: the browser uploads the video to the bot server, which runs
+ffmpeg and returns the smaller MP4. It needs to know where that server is — the same address the
+sign-in uses:
+
+```bash
+VITE_BOT_API_URL=https://your-bot.example.com npm run build
+```
+
+Visitors can also enter it per browser in the **Connect** section. Running locally, the Vite dev
+server proxies `/api` to `http://127.0.0.1:8080`, so start the bot (`cd bot && npm run dev`, optionally
+with `WEB_ONLY=true` to skip Telegram) and then `npm run dev`. Endpoint reference and limits:
+[`bot/README.md`](bot/README.md) → "Convert from the website".
 
 ### "Sign in with Telegram" on the site
 
@@ -59,5 +74,7 @@ successfully reduced outputs there and tells users before conversion. Channel co
 admin deletes them; a channel is a media archive, not a relational database. Public archives are
 blocked unless `TELEGRAM_ARCHIVE_ALLOW_PUBLIC=true` is explicitly set.
 
-The bot server also hosts `POST /telegram/login` (website sign-in verification) and `GET /health`.
+The bot server also hosts the website's conversion API (`GET /api/config`, `POST /api/convert`,
+`GET /api/jobs/:id`, `GET /api/jobs/:id/download`), `POST /telegram/login` (website sign-in
+verification) and `GET /health`. Set `WEB_ONLY=true` to run those without a Telegram bot.
 See [`bot/README.md`](bot/README.md) for Docker, webhook mode, sign-in, limits and settings.

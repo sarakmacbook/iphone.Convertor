@@ -6,6 +6,7 @@ import {
   type FormEvent,
 } from "react";
 import ConnectSection from "./ConnectSection";
+import ConvertSection from "./ConvertSection";
 import { ArrowIcon, CheckIcon, CopyIcon, TelegramIcon } from "./icons";
 import { botShareUrl, botUrl, useBotApiUrl, useBotUsername } from "./telegram";
 
@@ -505,7 +506,7 @@ function App() {
   useEffect(() => () => window.clearTimeout(copyTimer.current), []);
 
   useEffect(() => {
-    const ids = ["demo", "flow", "messages", "guardrails", "connect"];
+    const ids = ["convert", "demo", "flow", "messages", "guardrails", "connect"];
     const nodes = ids
       .map((id) => document.getElementById(id))
       .filter((node): node is HTMLElement => Boolean(node));
@@ -670,6 +671,7 @@ function App() {
   const busy = stage === "uploading" || stage === "processing";
 
   const navLinks = [
+    { href: "#convert", id: "convert", label: "Convert" },
     { href: "#demo", id: "demo", label: "Try it" },
     { href: "#flow", id: "flow", label: "The flow" },
     { href: "#messages", id: "messages", label: "Bot messages" },
@@ -1142,6 +1144,8 @@ function App() {
             </p>
           </section>
         </section>
+
+        <ConvertSection apiUrl={api.apiUrl} />
 
         <section className="journey-section page-width reveal" id="flow" aria-labelledby="flow-title">
           <div className="section-heading">
