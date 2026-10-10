@@ -1,9 +1,14 @@
 # Sendable bot
 
 The working Telegram bot behind the Sendable website. Someone sends an iPhone video and chooses
-**High quality (same dimensions)**, **Recommended (720p)**, **Smaller (480p)**, or **Custom dimensions**.
-They get a preview with the real before-and-after file size, and can then download it as a file. The
-original video is never changed.
+**Convert to MP4 (same dimensions)**, **High quality (same dimensions)**, **Recommended (720p)**,
+**Smaller (480p)**, or **Custom dimensions**. They get a preview with the real before-and-after file
+size, and can then download it as a file. The original video is never changed.
+
+**Convert to MP4** is for getting a standard, widely playable MP4 (H.264 video + AAC audio) from an
+iPhone's HEVC `.MOV` at the original resolution. Unlike the size options, it is always sent, even when
+the MP4 ends up bigger than the original, and its preview says so. Because it is a format change rather
+than a size reduction, these copies are **not** saved to the archive channel.
 
 It's built with [grammY](https://grammy.dev) and uses ffmpeg (H.264 + AAC MP4, `+faststart`) to make
 the copy. The high-quality option keeps the source resolution and uses a quality-biased encode, but
@@ -53,8 +58,8 @@ The image installs ffmpeg for you.
 
 The bot can keep each successfully reduced output in your Telegram channel and uses the archived
 message as the persistent download source. This survives bot restarts and leaves a searchable record
-in the video's caption. It archives **only the smaller converted copy**; original uploads and
-conversions that did not reduce the file are not stored there.
+in the video's caption. It archives **only the smaller converted copy**; original uploads, the
+**Convert to MP4** copies, and conversions that did not reduce the file are not stored there.
 
 1. Create a **private** Telegram channel for the archive.
 2. Add your bot to the channel as an administrator with permission to post messages.
